@@ -103,23 +103,51 @@ app.use('/api/orders', orderRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  const firebaseStatus = isFirebaseInitialized();
+  
   res.json({ 
-    status: 'ok', 
+    status: firebaseStatus ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
-    firebase: isFirebaseInitialized() ? '✅ initialized' : '❌ not initialized',
-    message: isFirebaseInitialized() 
-      ? 'Server is ready' 
-      : 'WARNING: Firebase not initialized - auth will fail'
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    firebase: {
+      initialized: firebaseStatus,
+      status: firebaseStatus ? '✅ Ready' : '❌ Not Initialized',
+      message: firebaseStatus 
+        ? 'Firebase Admin SDK is operational' 
+        : 'Firebase Admin SDK failed to initialize - check environment variables'
+    },
+    database: 'connected', // Will be updated by MongoDB connection
+    message: firebaseStatus 
+      ? 'Server is fully operational' 
+      : 'WARNING: Firebase not initialized - authentication will not work'
   });
 });
 
-// Debug endpoint - check Firebase status
+// Debug endpoint - detailed Firebase status
 app.get('/api/debug/firebase', (req, res) => {
+  const envVarsPresent = {
+    FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+    FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
+    FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+    FIREBASE_PRIVATE_KEY_LENGTH: process.env.FIREBASE_PRIVATE_KEY?.length || 0
+  };
+
   res.json({
     initialized: isFirebaseInitialized(),
+    environmentVariables: envVarsPresent,
+    allEnvVarsPresent: envVarsPresent.FIREBASE_PROJECT_ID && 
+                       envVarsPresent.FIREBASE_CLIENT_EMAIL && 
+                       envVarsPresent.FIREBASE_PRIVATE_KEY,
     message: isFirebaseInitialized() 
-      ? 'Firebase Admin SDK is ready' 
-      : 'Firebase Admin SDK NOT initialized - check serviceAccountKey.json'
+      ? '✅ Firebase Admin SDK is ready and working' 
+      : '❌ Firebase Admin SDK NOT initialized',
+    troubleshooting: !isFirebaseInitialized() ? {
+      step1: 'Check Render environment variables are set',
+      step2: 'Verify FIREBASE_PRIVATE_KEY includes -----BEGIN and -----END lines',
+      step3: 'Ensure private key is wrapped in quotes with \\n for newlines',
+      step4: 'Redeploy service after setting environment variables'
+    } : null
   });
 });
 
