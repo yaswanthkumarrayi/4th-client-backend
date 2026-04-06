@@ -32,7 +32,11 @@ const getRazorpay = () => {
 
 router.get('/products', async (req, res) => {
   try {
+    console.log('📦 Fetching products with overrides...');
+    
     const overrides = await ProductOverride.find();
+    console.log(`   Found ${overrides.length} product overrides`);
+    
     const overrideMap = new Map(overrides.map(o => [o.productId, o]));
     
     const products = productCatalog.map(product => {
@@ -66,15 +70,22 @@ router.get('/products', async (req, res) => {
       };
     }).filter(p => p.isActive);
     
+    console.log(`✅ Returning ${products.length} products`);
     res.json({
       success: true,
-      products
+      products,
+      count: products.length
     });
   } catch (error) {
-    console.error('Get products error:', error);
+    console.error('❌ Get products error:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products'
+      message: 'Failed to fetch products',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

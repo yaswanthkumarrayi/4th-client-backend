@@ -44,25 +44,47 @@ console.log('📌 STEP 3: Setting up Express server...');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware - CORS configuration
+// Middleware - CORS configuration (PRODUCTION READY)
 const allowedOrigins = process.env.FRONTEND_URL 
   ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
   : ['http://localhost:5173'];
 
+console.log('✅ Allowed CORS Origins:', allowedOrigins);
+
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
     
+    // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log(`⚠️  CORS blocked request from: ${origin}`);
+      console.warn(`⚠️  CORS blocked request from unauthorized origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Type']
 }));
+
+// Handle preflight requests
+app.options('*', cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
+}));
+
 app.use(express.json());
 
 // Request logging middleware
