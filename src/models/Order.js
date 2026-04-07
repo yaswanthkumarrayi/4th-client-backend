@@ -1,5 +1,5 @@
-
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';
+import { ORDER_STATUS, PAYMENT_STATUS } from '../config/orderStatus.js';
 
 const orderItemSchema = new mongoose.Schema({
   productId: {
@@ -93,14 +93,14 @@ const orderSchema = new mongoose.Schema({
     razorpaySignature: String,
     status: {
       type: String,
-      enum: ['pending', 'paid', 'failed', 'refunded'],
+      enum: PAYMENT_STATUS,
       default: 'pending'
     },
     paidAt: Date
   },
   orderStatus: {
     type: String,
-    enum: ['pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered', 'cancelled'],
+    enum: ORDER_STATUS,
     default: 'pending'
   },
   statusHistory: [{

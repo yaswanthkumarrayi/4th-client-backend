@@ -3,12 +3,65 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
-import ProductOverride from '../models/ProductOverride.js';
+import Product from '../models/Product.js';
 import User from '../models/User.js';
 import { verifyToken } from '../middleware/auth.js';
-import { productCatalog, calculateWeightPrices } from '../config/products.js';
 
 const router = express.Router();
+
+// Helper: Calculate weight prices
+const calculateWeightPrices = (pricePerKg) => ({
+  '250gm': Math.floor(pricePerKg * 0.25),
+  '500gm': Math.floor(pricePerKg * 0.5),
+  '1kg': pricePerKg,
+  '2kg': pricePerKg * 2
+});
+
+// Helper: Format product for API response
+const formatProduct = (product) => ({
+  id: product.productId,
+  productId: product.productId,
+  name: product.name,
+  category: product.category,
+  pricePerKg: product.pricePerKg,
+  price: Math.floor(product.pricePerKg * 0.25),
+  weights: ['250gm', '500gm', '1kg', '2kg'],
+  weightPrices: calculateWeightPrices(product.pricePerKg),
+  inStock: product.inStock,
+  stockQuantity: product.stockQuantity,
+  isActive: product.isActive
+});
+
+// Initial products for auto-seeding
+const INITIAL_PRODUCTS = [
+  { productId: 1, name: 'Mango Avakaya', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 2, name: 'Gongura Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 10, name: 'Ginger Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 11, name: 'Lemon Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 12, name: 'Red Chilli Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 13, name: 'Usirikaya Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 3, name: 'Chicken Pickle', category: 'Non Veg Pickles', pricePerKg: 1999 },
+  { productId: 4, name: 'Prawns Pickle', category: 'Non Veg Pickles', pricePerKg: 2499 },
+  { productId: 14, name: 'Mutton Boneless Pickle', category: 'Non Veg Pickles', pricePerKg: 2799 },
+  { productId: 7, name: 'Kandi Podi', category: 'Podis', pricePerKg: 1400 },
+  { productId: 8, name: 'Karvepaku Podi', category: 'Podis', pricePerKg: 1400 },
+  { productId: 9, name: 'Kobbari Podi', category: 'Podis', pricePerKg: 1400 },
+  { productId: 101, name: 'Mixture', category: 'Snacks', pricePerKg: 550 },
+  { productId: 102, name: 'Murukulu', category: 'Snacks', pricePerKg: 550 },
+  { productId: 103, name: 'Ribbon Pakodi', category: 'Snacks', pricePerKg: 550 },
+  { productId: 201, name: 'Ariselu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 202, name: 'Bandharu Laddu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 203, name: 'Boondhi Achu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 204, name: 'Boondhi Laddu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 205, name: 'Boorelu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 206, name: 'Cashew Achu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 207, name: 'Kajji Kayalu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 208, name: 'Mysore Pak', category: 'Sweets', pricePerKg: 799 },
+  { productId: 209, name: 'Nuvvundalu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 210, name: 'Palli Undalu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 211, name: 'Sanna Boondhi Laddu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 212, name: 'Sunnunda', category: 'Sweets', pricePerKg: 799 },
+];
 
 // Lazy initialization of Razorpay (only when needed)
 let razorpay = null;
@@ -27,91 +80,42 @@ const getRazorpay = () => {
 };
 
 // ============================================
-// PUBLIC: Get products with overrides
+// PUBLIC: Get products from database
 // ============================================
 
 router.get('/products', async (req, res) => {
   try {
     console.log('\n📦 ===== GET /api/orders/products =====');
-    console.log('   Timestamp:', new Date().toISOString());
     
-    // Check MongoDB connection
-    const mongoose = (await import('mongoose')).default;
-    const connectionState = mongoose.connection.readyState;
-    console.log('   MongoDB Connection State:', connectionState === 1 ? '✅ Connected' : `❌ Not connected (${connectionState})`);
+    // Fetch products from database
+    let products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
     
-    if (connectionState !== 1) {
-      console.log('❌ MongoDB not connected!');
-      return res.status(500).json({
-        success: false,
-        message: 'Database not connected'
-      });
-    }
-    
-    const overrides = await ProductOverride.find();
-    console.log(`   Found ${overrides.length} product overrides in database`);
-    
-    if (overrides.length > 0) {
-      console.log('   Override details:');
-      overrides.forEach(o => {
-        console.log(`     - Product ${o.productId}: price=${o.pricePerKg}, inStock=${o.inStock}`);
-      });
-    }
-    
-    const overrideMap = new Map(overrides.map(o => [o.productId, o]));
-    
-    const products = productCatalog.map(product => {
-      const override = overrideMap.get(product.id);
-      
-      if (override) {
-        const pricePerKg = override.pricePerKg || product.pricePerKg;
-        return {
-          id: product.id,
-          name: product.name,
-          category: product.category,
-          pricePerKg,
-          price: Math.floor(pricePerKg * 0.25),
-          weights: product.weights,
-          weightPrices: calculateWeightPrices(pricePerKg),
-          inStock: override.inStock !== undefined ? override.inStock : true,
-          isActive: override.isActive !== undefined ? override.isActive : true,
-          hasOverride: true
-        };
+    // Auto-seed if empty
+    if (products.length === 0) {
+      console.log('⚠️ No products found. Auto-seeding database...');
+      for (const p of INITIAL_PRODUCTS) {
+        await Product.create({ ...p, inStock: true, isActive: true });
       }
-      
-      return {
-        id: product.id,
-        name: product.name,
-        category: product.category,
-        pricePerKg: product.pricePerKg,
-        price: product.price,
-        weights: product.weights,
-        weightPrices: product.weightPrices,
-        inStock: true,
-        isActive: true,
-        hasOverride: false
-      };
-    }).filter(p => p.isActive);
+      products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
+      console.log(`✅ Seeded ${products.length} products`);
+    }
     
-    console.log(`✅ Returning ${products.length} products`);
+    // Format for API response
+    const formattedProducts = products.map(formatProduct);
+    
+    console.log(`✅ Returning ${formattedProducts.length} products`);
     console.log('=========================================\n');
     
     res.json({
       success: true,
-      products,
-      count: products.length,
-      overrideCount: overrides.length
+      products: formattedProducts,
+      count: formattedProducts.length
     });
   } catch (error) {
-    console.error('❌ Get products error:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
-    });
+    console.error('❌ Get products error:', error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Failed to fetch products'
     });
   }
 });
@@ -191,42 +195,36 @@ router.post('/create-order', verifyToken, async (req, res) => {
       });
     }
     
-    // Get product overrides
-    const overrides = await ProductOverride.find();
-    const overrideMap = new Map(overrides.map(o => [o.productId, o]));
-    
-    // Calculate totals with backend prices
+    // Calculate totals with backend prices from Product collection
     let subtotal = 0;
     const validatedItems = [];
     
     for (const item of items) {
-      const baseProduct = productCatalog.find(p => p.id === item.productId);
-      if (!baseProduct) {
+      // Fetch product from database
+      const product = await Product.findOne({ productId: item.productId });
+      if (!product) {
         return res.status(400).json({
           success: false,
           message: `Product ${item.productId} not found`
         });
       }
       
-      const override = overrideMap.get(item.productId);
-      
       // Check stock
-      if (override && !override.inStock) {
+      if (!product.inStock) {
         return res.status(400).json({
           success: false,
-          message: `${baseProduct.name} is out of stock`
+          message: `${product.name} is out of stock`
         });
       }
       
       // Calculate price
-      const pricePerKg = override?.pricePerKg || baseProduct.pricePerKg;
-      const weightPrices = calculateWeightPrices(pricePerKg);
+      const weightPrices = calculateWeightPrices(product.pricePerKg);
       const itemPrice = weightPrices[item.weight];
       
       if (!itemPrice) {
         return res.status(400).json({
           success: false,
-          message: `Invalid weight for ${baseProduct.name}`
+          message: `Invalid weight for ${product.name}`
         });
       }
       
@@ -234,9 +232,9 @@ router.post('/create-order', verifyToken, async (req, res) => {
       subtotal += itemTotal;
       
       validatedItems.push({
-        productId: baseProduct.id,
-        name: baseProduct.name,
-        category: baseProduct.category,
+        productId: product.productId,
+        name: product.name,
+        category: product.category,
         image: item.image || '',
         weight: item.weight,
         quantity: item.quantity,

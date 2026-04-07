@@ -2,10 +2,70 @@ import express from 'express';
 import { adminLogin, verifyAdminToken } from '../middleware/adminAuth.js';
 import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
-import ProductOverride from '../models/ProductOverride.js';
-import { productCatalog, calculateWeightPrices } from '../config/products.js';
+import Product from '../models/Product.js';
+import { ORDER_STATUS, isValidOrderStatus } from '../config/orderStatus.js';
 
 const router = express.Router();
+
+// Initial product data for seeding
+const INITIAL_PRODUCTS = [
+  // Veg Pickles
+  { productId: 1, name: 'Mango Avakaya', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 2, name: 'Gongura Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 10, name: 'Ginger Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 11, name: 'Lemon Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 12, name: 'Red Chilli Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  { productId: 13, name: 'Usirikaya Pickle', category: 'Veg Pickles', pricePerKg: 750 },
+  // Non Veg Pickles
+  { productId: 3, name: 'Chicken Pickle', category: 'Non Veg Pickles', pricePerKg: 1999 },
+  { productId: 4, name: 'Prawns Pickle', category: 'Non Veg Pickles', pricePerKg: 2499 },
+  { productId: 14, name: 'Mutton Boneless Pickle', category: 'Non Veg Pickles', pricePerKg: 2799 },
+  // Podis
+  { productId: 7, name: 'Kandi Podi', category: 'Podis', pricePerKg: 1400 },
+  { productId: 8, name: 'Karvepaku Podi', category: 'Podis', pricePerKg: 1400 },
+  { productId: 9, name: 'Kobbari Podi', category: 'Podis', pricePerKg: 1400 },
+  // Snacks
+  { productId: 101, name: 'Mixture', category: 'Snacks', pricePerKg: 550 },
+  { productId: 102, name: 'Murukulu', category: 'Snacks', pricePerKg: 550 },
+  { productId: 103, name: 'Ribbon Pakodi', category: 'Snacks', pricePerKg: 550 },
+  // Sweets
+  { productId: 201, name: 'Ariselu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 202, name: 'Bandharu Laddu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 203, name: 'Boondhi Achu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 204, name: 'Boondhi Laddu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 205, name: 'Boorelu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 206, name: 'Cashew Achu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 207, name: 'Kajji Kayalu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 208, name: 'Mysore Pak', category: 'Sweets', pricePerKg: 799 },
+  { productId: 209, name: 'Nuvvundalu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 210, name: 'Palli Undalu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 211, name: 'Sanna Boondhi Laddu', category: 'Sweets', pricePerKg: 799 },
+  { productId: 212, name: 'Sunnunda', category: 'Sweets', pricePerKg: 799 },
+];
+
+// Helper: Calculate weight prices
+const calculateWeightPrices = (pricePerKg) => ({
+  '250gm': Math.floor(pricePerKg * 0.25),
+  '500gm': Math.floor(pricePerKg * 0.5),
+  '1kg': pricePerKg,
+  '2kg': pricePerKg * 2
+});
+
+// Helper: Format product for API response
+const formatProduct = (product) => ({
+  id: product.productId,
+  productId: product.productId,
+  name: product.name,
+  category: product.category,
+  pricePerKg: product.pricePerKg,
+  price: Math.floor(product.pricePerKg * 0.25),
+  weights: ['250gm', '500gm', '1kg', '2kg'],
+  weightPrices: calculateWeightPrices(product.pricePerKg),
+  inStock: product.inStock,
+  stockQuantity: product.stockQuantity,
+  isActive: product.isActive,
+  updatedAt: product.updatedAt
+});
 
 // ============================================
 // ADMIN AUTH
@@ -176,12 +236,19 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
   try {
     const { status, note } = req.body;
     
-    const validStatuses = ['pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered', 'cancelled'];
+    console.log('\n═══════════════════════════════════════════');
+    console.log('🔄 ORDER STATUS UPDATE REQUEST');
+    console.log('   Order ID:', req.params.orderId);
+    console.log('   New Status:', status);
+    console.log('   Valid Statuses:', ORDER_STATUS);
+    console.log('═══════════════════════════════════════════');
     
-    if (!validStatuses.includes(status)) {
+    // Validate status using shared constant
+    if (!isValidOrderStatus(status)) {
+      console.log('❌ Invalid status rejected:', status);
       return res.status(400).json({
         success: false,
-        message: 'Invalid status'
+        message: `Invalid status: "${status}". Valid values: ${ORDER_STATUS.join(', ')}`
       });
     }
     
@@ -197,13 +264,15 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
     order.addStatusHistory(status, note || '');
     await order.save();
     
+    console.log('✅ Order status updated to:', status);
+    
     res.json({
       success: true,
       message: 'Order status updated',
       order
     });
   } catch (error) {
-    console.error('Update order status error:', error);
+    console.error('❌ Update order status error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update order status'
@@ -212,233 +281,250 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
 });
 
 // ============================================
-// PRODUCTS MANAGEMENT (Overrides)
+// PRODUCTS MANAGEMENT (Single Source of Truth)
 // ============================================
 
-// Get all products with overrides merged
-router.get('/products', verifyAdminToken, async (req, res) => {
+// Seed products if collection is empty (run once on first startup)
+router.post('/products/seed', verifyAdminToken, async (req, res) => {
   try {
-    console.log('\n📋 ===== FETCHING PRODUCTS =====');
+    const existingCount = await Product.countDocuments();
     
-    // Fetch all overrides from database
-    const overrides = await ProductOverride.find();
-    console.log(`💾 Found ${overrides.length} product overrides in database`);
+    if (existingCount > 0 && !req.query.force) {
+      return res.json({
+        success: false,
+        message: `Database already has ${existingCount} products. Use ?force=true to reseed.`,
+        count: existingCount
+      });
+    }
     
-    const overrideMap = new Map(overrides.map(o => [o.productId, o]));
+    if (req.query.force) {
+      await Product.deleteMany({});
+      console.log('🗑️ Deleted existing products for reseed');
+    }
     
-    const products = productCatalog.map(product => {
-      const override = overrideMap.get(product.id);
-      
-      if (override) {
-        const pricePerKg = override.pricePerKg || product.pricePerKg;
-        console.log(`  ✏️  ${product.name} - Has override (Price: ${pricePerKg}, Stock: ${override.inStock})`);
-        return {
-          ...product,
-          pricePerKg,
-          price: Math.floor(pricePerKg * 0.25),
-          weightPrices: calculateWeightPrices(pricePerKg),
-          inStock: override.inStock !== undefined ? override.inStock : true,
-          isActive: override.isActive !== undefined ? override.isActive : true,
-          hasOverride: true,
-          lastUpdated: override.updatedAt
-        };
-      }
-      
-      return {
+    // Insert all products
+    for (const product of INITIAL_PRODUCTS) {
+      await Product.create({
         ...product,
         inStock: true,
-        isActive: true,
-        hasOverride: false
-      };
-    });
+        isActive: true
+      });
+    }
     
-    console.log(`📦 Returning ${products.length} products total`);
-    console.log('================================\n');
+    console.log(`✅ Seeded ${INITIAL_PRODUCTS.length} products`);
     
     res.json({
       success: true,
-      products
+      message: `Seeded ${INITIAL_PRODUCTS.length} products successfully`,
+      count: INITIAL_PRODUCTS.length
+    });
+  } catch (error) {
+    console.error('Seed error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to seed products: ' + error.message
+    });
+  }
+});
+
+// Get all products from database
+router.get('/products', verifyAdminToken, async (req, res) => {
+  try {
+    console.log('\n📋 ===== FETCHING PRODUCTS FROM DATABASE =====');
+    
+    // Fetch all products from MongoDB
+    let products = await Product.find().sort({ category: 1, productId: 1 });
+    
+    // If no products exist, seed the database automatically
+    if (products.length === 0) {
+      console.log('⚠️ No products in database. Auto-seeding...');
+      for (const product of INITIAL_PRODUCTS) {
+        await Product.create({
+          ...product,
+          inStock: true,
+          isActive: true
+        });
+      }
+      products = await Product.find().sort({ category: 1, productId: 1 });
+      console.log(`✅ Auto-seeded ${products.length} products`);
+    }
+    
+    // Format products for response
+    const formattedProducts = products.map(formatProduct);
+    
+    console.log(`📦 Returning ${formattedProducts.length} products`);
+    console.log('============================================\n');
+    
+    res.json({
+      success: true,
+      products: formattedProducts
     });
   } catch (error) {
     console.error('❌ Get products error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products'
+      message: 'Failed to fetch products: ' + error.message
     });
   }
 });
 
-// Update product override
+// Update product in database
 router.put('/products/:productId', verifyAdminToken, async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
-    const { pricePerKg, inStock, isActive } = req.body;
+    const { pricePerKg, inStock, isActive, name, category } = req.body;
     
-    // 🔍 DEBUG: Log incoming request
-    console.log('\n');
-    console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║       🔄 PRODUCT UPDATE REQUEST                  ║');
-    console.log('╚══════════════════════════════════════════════════╝');
-    console.log('📦 Product ID:', productId);
-    console.log('📝 Request Body:', JSON.stringify(req.body, null, 2));
-    console.log('👤 Admin:', req.admin?.mobile || 'Unknown');
+    console.log('\n═══════════════════════════════════════════');
+    console.log('🔄 PRODUCT UPDATE REQUEST');
+    console.log('   Product ID:', productId);
+    console.log('   Updates:', JSON.stringify(req.body));
+    console.log('═══════════════════════════════════════════');
     
     // Validate productId
     if (isNaN(productId)) {
-      console.log('❌ Invalid product ID');
       return res.status(400).json({
         success: false,
         message: 'Invalid product ID'
       });
     }
     
-    // Check if product exists in catalog
-    const baseProduct = productCatalog.find(p => p.id === productId);
-    if (!baseProduct) {
-      console.log('❌ Product not found in catalog');
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found in catalog'
-      });
+    // Find existing product
+    let product = await Product.findOne({ productId });
+    
+    // If product doesn't exist in DB, check if it's a valid initial product
+    if (!product) {
+      const initialProduct = INITIAL_PRODUCTS.find(p => p.productId === productId);
+      if (initialProduct) {
+        // Create the product in database
+        product = await Product.create({
+          ...initialProduct,
+          inStock: true,
+          isActive: true
+        });
+        console.log('✨ Created new product in database');
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: 'Product not found'
+        });
+      }
     }
     
-    console.log('✅ Base product found:', baseProduct.name);
+    // Build update object with only provided fields
+    const updateFields = {};
     
-    // First, get existing override (if any)
-    const existingOverride = await ProductOverride.findOne({ productId });
-    console.log('📋 Existing override:', existingOverride ? 'Found' : 'None');
-    
-    // Build the update - preserve existing values if not provided in request
-    const updateFields = {
-      productId,
-      updatedAt: new Date()
-    };
-    
-    // Handle pricePerKg - use new value, existing value, or null
     if (pricePerKg !== undefined && pricePerKg !== null) {
       updateFields.pricePerKg = parseInt(pricePerKg);
-      console.log('💰 Setting price to:', updateFields.pricePerKg);
-    } else if (existingOverride?.pricePerKg) {
-      updateFields.pricePerKg = existingOverride.pricePerKg;
-      console.log('💰 Keeping existing price:', updateFields.pricePerKg);
     }
     
-    // Handle inStock - IMPORTANT: false is valid, only skip if undefined
     if (inStock !== undefined) {
       updateFields.inStock = inStock === true || inStock === 'true';
-      console.log('📊 Setting stock to:', updateFields.inStock);
-    } else if (existingOverride && existingOverride.inStock !== undefined) {
-      updateFields.inStock = existingOverride.inStock;
-      console.log('📊 Keeping existing stock:', updateFields.inStock);
-    } else {
-      updateFields.inStock = true; // Default to in stock
-      console.log('📊 Defaulting stock to: true');
     }
     
-    // Handle isActive
     if (isActive !== undefined) {
       updateFields.isActive = isActive === true || isActive === 'true';
-      console.log('🔘 Setting active to:', updateFields.isActive);
-    } else if (existingOverride && existingOverride.isActive !== undefined) {
-      updateFields.isActive = existingOverride.isActive;
-    } else {
-      updateFields.isActive = true;
     }
     
-    console.log('\n📤 SAVING TO DATABASE:');
-    console.log(JSON.stringify(updateFields, null, 2));
+    if (name !== undefined) {
+      updateFields.name = name.trim();
+    }
     
-    // Use updateOne with upsert for reliability
-    const updateResult = await ProductOverride.updateOne(
-      { productId },
-      { $set: updateFields },
-      { upsert: true }
-    );
+    if (category !== undefined) {
+      updateFields.category = category;
+    }
     
-    console.log('\n📊 MongoDB Update Result:');
-    console.log('   - Matched:', updateResult.matchedCount);
-    console.log('   - Modified:', updateResult.modifiedCount);
-    console.log('   - Upserted:', updateResult.upsertedCount);
+    console.log('📝 Update fields:', updateFields);
     
-    // Verify the update by reading it back
-    const savedOverride = await ProductOverride.findOne({ productId });
-    
-    if (!savedOverride) {
-      console.log('❌ CRITICAL: Override not found after save!');
-      return res.status(500).json({
+    // Check if there are any fields to update
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({
         success: false,
-        message: 'Database update verification failed'
+        message: 'No valid fields provided for update'
       });
     }
     
-    console.log('\n✅ DATABASE VERIFIED:');
-    console.log('   _id:', savedOverride._id);
-    console.log('   productId:', savedOverride.productId);
-    console.log('   pricePerKg:', savedOverride.pricePerKg);
-    console.log('   inStock:', savedOverride.inStock);
-    console.log('   isActive:', savedOverride.isActive);
-    console.log('   updatedAt:', savedOverride.updatedAt);
+    // Perform the update using updateOne to get matchedCount/modifiedCount
+    const updateResult = await Product.updateOne(
+      { productId },
+      { $set: updateFields }
+    );
     
-    // Build response with merged product data
-    const finalPricePerKg = savedOverride.pricePerKg || baseProduct.pricePerKg;
-    const responseProduct = {
-      ...baseProduct,
-      pricePerKg: finalPricePerKg,
-      price: Math.floor(finalPricePerKg * 0.25),
-      weightPrices: calculateWeightPrices(finalPricePerKg),
-      inStock: savedOverride.inStock,
-      isActive: savedOverride.isActive,
-      hasOverride: true,
-      lastUpdated: savedOverride.updatedAt
-    };
+    console.log('📊 Update result:', {
+      matchedCount: updateResult.matchedCount,
+      modifiedCount: updateResult.modifiedCount
+    });
     
-    console.log('\n📦 RESPONSE PRODUCT:');
-    console.log('   Name:', responseProduct.name);
-    console.log('   Price/kg:', responseProduct.pricePerKg);
-    console.log('   In Stock:', responseProduct.inStock);
-    console.log('   Active:', responseProduct.isActive);
-    console.log('══════════════════════════════════════════════════\n');
+    // Check if product was found
+    if (updateResult.matchedCount === 0) {
+      console.log('❌ No product matched productId:', productId);
+      return res.status(404).json({
+        success: false,
+        message: `Product with ID ${productId} not found in database`,
+        matchedCount: 0,
+        modifiedCount: 0
+      });
+    }
     
-    return res.json({
+    // Fetch the updated product
+    const updatedProduct = await Product.findOne({ productId });
+    
+    console.log('✅ Product updated successfully');
+    console.log('   New price:', updatedProduct.pricePerKg);
+    console.log('   In stock:', updatedProduct.inStock);
+    console.log('═══════════════════════════════════════════\n');
+    
+    res.json({
       success: true,
       message: 'Product updated successfully',
-      product: responseProduct
+      product: formatProduct(updatedProduct),
+      matchedCount: updateResult.matchedCount,
+      modifiedCount: updateResult.modifiedCount
     });
     
   } catch (error) {
-    console.log('\n❌ ═══════ UPDATE ERROR ═══════');
-    console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
-    console.log('════════════════════════════════\n');
-    
-    return res.status(500).json({
+    console.error('❌ Update error:', error);
+    res.status(500).json({
       success: false,
       message: 'Failed to update product: ' + error.message
     });
   }
 });
 
-// Reset product to base values
+// Reset product to default values
 router.delete('/products/:productId/override', verifyAdminToken, async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
     
-    await ProductOverride.findOneAndDelete({ productId });
+    // Find the initial product data
+    const initialProduct = INITIAL_PRODUCTS.find(p => p.productId === productId);
     
-    const baseProduct = productCatalog.find(p => p.id === productId);
+    if (!initialProduct) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+    
+    // Reset to initial values
+    const result = await Product.findOneAndUpdate(
+      { productId },
+      {
+        $set: {
+          pricePerKg: initialProduct.pricePerKg,
+          inStock: true,
+          isActive: true
+        }
+      },
+      { new: true }
+    );
     
     res.json({
       success: true,
       message: 'Product reset to default',
-      product: {
-        ...baseProduct,
-        inStock: true,
-        isActive: true,
-        hasOverride: false
-      }
+      product: formatProduct(result)
     });
   } catch (error) {
-    console.error('Reset product error:', error);
+    console.error('Reset error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to reset product'
@@ -446,44 +532,14 @@ router.delete('/products/:productId/override', verifyAdminToken, async (req, res
   }
 });
 
-// ============================================
-// DEBUG: Test database connection and updates
-// ============================================
-
+// Debug: Check database connection
 router.get('/debug/db', verifyAdminToken, async (req, res) => {
   try {
     const mongoose = (await import('mongoose')).default;
-    
-    console.log('\n🔍 ===== DATABASE DEBUG =====');
-    
-    // Check connection state
     const connectionState = mongoose.connection.readyState;
     const stateNames = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
     
-    console.log('Connection State:', stateNames[connectionState]);
-    console.log('Host:', mongoose.connection.host);
-    console.log('Database:', mongoose.connection.name);
-    
-    // Get all overrides
-    const overrides = await ProductOverride.find();
-    console.log('Product Overrides Count:', overrides.length);
-    
-    // Try a test write
-    const testResult = await ProductOverride.updateOne(
-      { productId: 9999 },
-      { $set: { productId: 9999, pricePerKg: 1, inStock: true, updatedAt: new Date() } },
-      { upsert: true }
-    );
-    
-    // Read it back
-    const testDoc = await ProductOverride.findOne({ productId: 9999 });
-    
-    // Delete test doc
-    await ProductOverride.deleteOne({ productId: 9999 });
-    
-    console.log('Test Write Result:', testResult);
-    console.log('Test Read:', testDoc ? 'Success' : 'Failed');
-    console.log('==============================\n');
+    const productCount = await Product.countDocuments();
     
     res.json({
       success: true,
@@ -493,109 +549,14 @@ router.get('/debug/db', verifyAdminToken, async (req, res) => {
         host: mongoose.connection.host,
         name: mongoose.connection.name
       },
-      overrides: {
-        count: overrides.length,
-        data: overrides.map(o => ({
-          productId: o.productId,
-          pricePerKg: o.pricePerKg,
-          inStock: o.inStock,
-          updatedAt: o.updatedAt
-        }))
-      },
-      writeTest: {
-        matched: testResult.matchedCount,
-        modified: testResult.modifiedCount,
-        upserted: testResult.upsertedCount,
-        readBack: !!testDoc
+      products: {
+        count: productCount
       }
     });
   } catch (error) {
-    console.error('Debug DB Error:', error);
     res.status(500).json({
       success: false,
-      message: error.message,
-      stack: error.stack
-    });
-  }
-});
-
-// ============================================
-// DEBUG: Public test endpoint (NO AUTH - for testing only)
-// ============================================
-
-router.get('/debug/test-write', async (req, res) => {
-  console.log('\n🧪 ===== PUBLIC DEBUG TEST =====');
-  
-  try {
-    const mongoose = (await import('mongoose')).default;
-    
-    // Step 1: Check connection
-    const state = mongoose.connection.readyState;
-    console.log('Connection state:', state, state === 1 ? '(connected)' : '(NOT connected)');
-    console.log('Database name:', mongoose.connection.name);
-    
-    if (state !== 1) {
-      return res.status(500).json({
-        success: false,
-        message: 'MongoDB not connected',
-        state
-      });
-    }
-    
-    // Step 2: Try to write
-    const testProductId = 99999;
-    const testPrice = Math.floor(Math.random() * 1000) + 100;
-    
-    console.log('Writing test data: productId=' + testProductId + ', price=' + testPrice);
-    
-    const writeResult = await ProductOverride.updateOne(
-      { productId: testProductId },
-      { $set: { productId: testProductId, pricePerKg: testPrice, inStock: true, updatedAt: new Date() } },
-      { upsert: true }
-    );
-    
-    console.log('Write result:', JSON.stringify(writeResult));
-    
-    // Step 3: Read it back
-    const readDoc = await ProductOverride.findOne({ productId: testProductId });
-    console.log('Read back:', readDoc ? JSON.stringify(readDoc) : 'NOT FOUND');
-    
-    // Step 4: Verify
-    const success = readDoc && readDoc.pricePerKg === testPrice;
-    console.log('Verification:', success ? 'PASSED' : 'FAILED');
-    
-    // Step 5: Clean up
-    await ProductOverride.deleteOne({ productId: testProductId });
-    console.log('Cleanup: Test document deleted');
-    console.log('===================================\n');
-    
-    // Step 6: List all overrides
-    const allOverrides = await ProductOverride.find();
-    
-    res.json({
-      success,
-      test: {
-        wrote: testPrice,
-        readBack: readDoc?.pricePerKg,
-        matched: success
-      },
-      database: {
-        name: mongoose.connection.name,
-        host: mongoose.connection.host,
-        state: state
-      },
-      existingOverrides: allOverrides.map(o => ({
-        productId: o.productId,
-        pricePerKg: o.pricePerKg,
-        inStock: o.inStock
-      }))
-    });
-  } catch (error) {
-    console.error('Test write error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-      stack: error.stack
+      message: error.message
     });
   }
 });
