@@ -240,12 +240,34 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
     console.log('🔄 ORDER STATUS UPDATE REQUEST');
     console.log('   Order ID:', req.params.orderId);
     console.log('   New Status:', status);
+    console.log('   Status type:', typeof status);
     console.log('   Valid Statuses:', ORDER_STATUS);
     console.log('═══════════════════════════════════════════');
     
+    // CRITICAL: Check for undefined, null, empty string FIRST
+    if (!status || typeof status !== 'string' || status.trim() === '') {
+      console.log('❌ Status is missing, undefined, or empty:', status);
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status: "${status}". Status is required and must be a non-empty string. Valid values: ${ORDER_STATUS.join(', ')}`
+      });
+    }
+    
+    // Normalize status (lowercase, trimmed)
+    const normalizedStatus = status.trim().toLowerCase();
+    
+    // Check for string 'undefined' or 'null' (common frontend bug)
+    if (normalizedStatus === 'undefined' || normalizedStatus === 'null') {
+      console.log('❌ Status is string "undefined" or "null":', status);
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status: "${status}". Cannot be "undefined" or "null". Valid values: ${ORDER_STATUS.join(', ')}`
+      });
+    }
+    
     // Validate status using shared constant
-    if (!isValidOrderStatus(status)) {
-      console.log('❌ Invalid status rejected:', status);
+    if (!isValidOrderStatus(normalizedStatus)) {
+      console.log('❌ Invalid status rejected:', normalizedStatus);
       return res.status(400).json({
         success: false,
         message: `Invalid status: "${status}". Valid values: ${ORDER_STATUS.join(', ')}`
@@ -261,10 +283,11 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
       });
     }
     
-    order.addStatusHistory(status, note || '');
+    // Use normalizedStatus for database update
+    order.addStatusHistory(normalizedStatus, note || '');
     await order.save();
     
-    console.log('✅ Order status updated to:', status);
+    console.log('✅ Order status updated to:', normalizedStatus);
     
     res.json({
       success: true,
@@ -372,24 +395,36 @@ router.get('/products', verifyAdminToken, async (req, res) => {
 router.put('/products/:productId', verifyAdminToken, async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
-    const { pricePerKg, inStock, isActive, name, category } = req.body;
     
     console.log('\n═══════════════════════════════════════════');
     console.log('🔄 PRODUCT UPDATE REQUEST');
-    console.log('   Product ID:', productId);
-    console.log('   Updates:', JSON.stringify(req.body));
+    console.log('   Product ID (param):', req.params.productId);
+    console.log('   Product ID (parsed):', productId);
+    console.log('   Request body:', JSON.stringify(req.body));
+    console.log('   Body keys:', Object.keys(req.body));
     console.log('═══════════════════════════════════════════');
     
     // Validate productId
-    if (isNaN(productId)) {
+    if (isNaN(productId) || productId <= 0) {
+      console.log('❌ Invalid product ID');
       return res.status(400).json({
         success: false,
-        message: 'Invalid product ID'
+        message: 'Invalid product ID: must be a positive number'
+      });
+    }
+    
+    // CRITICAL: Validate request body exists and is not empty
+    if (!req.body || typeof req.body !== 'object' || Object.keys(req.body).length === 0) {
+      console.log('❌ Request body is empty or invalid');
+      return res.status(400).json({
+        success: false,
+        message: 'No valid fields provided for update. Request body is empty.'
       });
     }
     
     // Find existing product
     let product = await Product.findOne({ productId });
+    console.log('📦 Found product in DB:', product ? 'YES' : 'NO');
     
     // If product doesn't exist in DB, check if it's a valid initial product
     if (!product) {
@@ -410,27 +445,51 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
       }
     }
     
-    // Build update object with only provided fields
+    // Build update object with only valid, provided fields
     const updateFields = {};
     
-    if (pricePerKg !== undefined && pricePerKg !== null) {
-      updateFields.pricePerKg = parseInt(pricePerKg);
+    // pricePerKg - must be a valid positive number
+    if (req.body.pricePerKg !== undefined && req.body.pricePerKg !== null && req.body.pricePerKg !== '') {
+      const price = parseInt(req.body.pricePerKg);
+      if (!isNaN(price) && price > 0) {
+        updateFields.pricePerKg = price;
+      } else {
+        console.log('⚠️ Invalid pricePerKg ignored:', req.body.pricePerKg);
+      }
     }
     
-    if (inStock !== undefined) {
-      updateFields.inStock = inStock === true || inStock === 'true';
+    // inStock - boolean (must handle false properly)
+    if (req.body.inStock !== undefined && req.body.inStock !== null) {
+      // Handle string 'true'/'false' and boolean values
+      updateFields.inStock = req.body.inStock === true || req.body.inStock === 'true';
+      console.log('📌 Setting inStock to:', updateFields.inStock, '(from:', req.body.inStock, ')');
     }
     
-    if (isActive !== undefined) {
-      updateFields.isActive = isActive === true || isActive === 'true';
+    // isActive - boolean
+    if (req.body.isActive !== undefined && req.body.isActive !== null) {
+      updateFields.isActive = req.body.isActive === true || req.body.isActive === 'true';
     }
     
-    if (name !== undefined) {
-      updateFields.name = name.trim();
+    // name - non-empty string
+    if (req.body.name !== undefined && req.body.name !== null && String(req.body.name).trim() !== '') {
+      updateFields.name = String(req.body.name).trim();
     }
     
-    if (category !== undefined) {
-      updateFields.category = category;
+    // category - valid category
+    if (req.body.category !== undefined && req.body.category !== null && req.body.category !== '') {
+      updateFields.category = req.body.category;
+    }
+    
+    // Handle stockQuantity (can be null for unlimited)
+    if (req.body.stockQuantity !== undefined) {
+      if (req.body.stockQuantity === null || req.body.stockQuantity === '') {
+        updateFields.stockQuantity = null;
+      } else {
+        const qty = parseInt(req.body.stockQuantity);
+        if (!isNaN(qty) && qty >= 0) {
+          updateFields.stockQuantity = qty;
+        }
+      }
     }
     
     console.log('📝 Update fields:', updateFields);

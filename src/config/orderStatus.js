@@ -30,8 +30,29 @@ export const ORDER_STATUS_LABELS = {
   cancelled: 'Cancelled'
 };
 
-// Status validation helper
-export const isValidOrderStatus = (status) => ORDER_STATUS.includes(status);
-export const isValidPaymentStatus = (status) => PAYMENT_STATUS.includes(status);
+// Status validation helper - handles undefined, null, and non-string values
+export const isValidOrderStatus = (status) => {
+  // Handle undefined, null, and non-string cases
+  if (status === undefined || status === null || typeof status !== 'string') {
+    return false;
+  }
+  
+  // Normalize and check
+  const normalized = status.trim().toLowerCase();
+  
+  // Check for literal 'undefined' or 'null' strings
+  if (normalized === 'undefined' || normalized === 'null' || normalized === '') {
+    return false;
+  }
+  
+  return ORDER_STATUS.includes(normalized);
+};
+
+export const isValidPaymentStatus = (status) => {
+  if (status === undefined || status === null || typeof status !== 'string') {
+    return false;
+  }
+  return PAYMENT_STATUS.includes(status.trim().toLowerCase());
+};
 
 export default ORDER_STATUS;
