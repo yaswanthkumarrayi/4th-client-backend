@@ -239,17 +239,44 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
     console.log('\n═══════════════════════════════════════════');
     console.log('🔄 ORDER STATUS UPDATE REQUEST');
     console.log('   Order ID:', req.params.orderId);
-    console.log('   New Status:', status);
+    console.log('   Raw body:', JSON.stringify(req.body));
+    console.log('   Status value:', status);
     console.log('   Status type:', typeof status);
+    console.log('   Status === undefined:', status === undefined);
+    console.log('   Status === null:', status === null);
     console.log('   Valid Statuses:', ORDER_STATUS);
     console.log('═══════════════════════════════════════════');
     
     // CRITICAL: Check for undefined, null, empty string FIRST
-    if (!status || typeof status !== 'string' || status.trim() === '') {
-      console.log('❌ Status is missing, undefined, or empty:', status);
+    if (status === undefined) {
+      console.log('❌ Status is undefined - frontend did not send status field');
       return res.status(400).json({
         success: false,
-        message: `Invalid status: "${status}". Status is required and must be a non-empty string. Valid values: ${ORDER_STATUS.join(', ')}`
+        message: `Status is required. The request body did not include a 'status' field. Please ensure the frontend sends: { status: "confirmed" } (or another valid status)`
+      });
+    }
+    
+    if (status === null) {
+      console.log('❌ Status is null');
+      return res.status(400).json({
+        success: false,
+        message: `Status cannot be null. Valid values: ${ORDER_STATUS.join(', ')}`
+      });
+    }
+    
+    if (typeof status !== 'string') {
+      console.log('❌ Status is not a string:', typeof status);
+      return res.status(400).json({
+        success: false,
+        message: `Status must be a string, got ${typeof status}. Valid values: ${ORDER_STATUS.join(', ')}`
+      });
+    }
+    
+    if (status.trim() === '') {
+      console.log('❌ Status is empty string');
+      return res.status(400).json({
+        success: false,
+        message: `Status cannot be empty. Valid values: ${ORDER_STATUS.join(', ')}`
       });
     }
     
@@ -261,7 +288,7 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
       console.log('❌ Status is string "undefined" or "null":', status);
       return res.status(400).json({
         success: false,
-        message: `Invalid status: "${status}". Cannot be "undefined" or "null". Valid values: ${ORDER_STATUS.join(', ')}`
+        message: `Invalid status: "${status}". Cannot be "undefined" or "null". This usually means a frontend bug where undefined was converted to string. Valid values: ${ORDER_STATUS.join(', ')}`
       });
     }
     
