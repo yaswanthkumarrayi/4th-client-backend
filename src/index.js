@@ -85,12 +85,25 @@ app.options('*', cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 }));
 
-app.use(express.json());
+// CRITICAL: Parse JSON bodies - must be before routes
+app.use(express.json({ limit: '10mb' }));
 
-// Request logging middleware
+// Also parse URL-encoded bodies (for form submissions)
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware with body debugging for PUT/POST
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString().substring(11, 19);
   console.log(`[${timestamp}] 📨 ${req.method} ${req.path}`);
+  
+  // Debug body for PUT/POST requests (helps diagnose empty body issues)
+  if ((req.method === 'PUT' || req.method === 'POST') && req.path.includes('/products')) {
+    console.log('   📦 Content-Type:', req.headers['content-type']);
+    console.log('   📦 Body exists:', !!req.body);
+    console.log('   📦 Body keys:', Object.keys(req.body || {}));
+    console.log('   📦 Raw body:', JSON.stringify(req.body));
+  }
+  
   next();
 });
 

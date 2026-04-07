@@ -418,20 +418,33 @@ router.get('/products', verifyAdminToken, async (req, res) => {
   }
 });
 
-// Update product in database
+// ============================================
+// ROBUST PRODUCT UPDATE CONTROLLER
+// Handles: boolean false, string numbers, partial updates
+// ============================================
 router.put('/products/:productId', verifyAdminToken, async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
     
-    console.log('\n═══════════════════════════════════════════');
-    console.log('🔄 PRODUCT UPDATE REQUEST');
-    console.log('   Product ID (param):', req.params.productId);
-    console.log('   Product ID (parsed):', productId);
-    console.log('   Request body:', JSON.stringify(req.body));
-    console.log('   Body keys:', Object.keys(req.body));
-    console.log('═══════════════════════════════════════════');
+    // ═══════════════════════════════════════════
+    // STEP 1: DETAILED REQUEST LOGGING
+    // ═══════════════════════════════════════════
+    console.log('\n╔════════════════════════════════════════════════════════╗');
+    console.log('║       🔄 PRODUCT UPDATE REQUEST                        ║');
+    console.log('╚════════════════════════════════════════════════════════╝');
+    console.log('📍 Product ID (param):', req.params.productId);
+    console.log('📍 Product ID (parsed):', productId);
+    console.log('📦 Raw req.body:', req.body);
+    console.log('📦 typeof req.body:', typeof req.body);
+    console.log('📦 JSON.stringify(req.body):', JSON.stringify(req.body));
+    console.log('📦 Object.keys(req.body):', Object.keys(req.body || {}));
+    console.log('📦 req.body.inStock:', req.body?.inStock, '| type:', typeof req.body?.inStock);
+    console.log('📦 req.body.pricePerKg:', req.body?.pricePerKg, '| type:', typeof req.body?.pricePerKg);
+    console.log('────────────────────────────────────────────────────────');
     
-    // Validate productId
+    // ═══════════════════════════════════════════
+    // STEP 2: VALIDATE PRODUCT ID
+    // ═══════════════════════════════════════════
     if (isNaN(productId) || productId <= 0) {
       console.log('❌ Invalid product ID');
       return res.status(400).json({
@@ -440,24 +453,141 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
       });
     }
     
-    // CRITICAL: Validate request body exists and is not empty
-    if (!req.body || typeof req.body !== 'object' || Object.keys(req.body).length === 0) {
-      console.log('❌ Request body is empty or invalid');
+    // ═══════════════════════════════════════════
+    // STEP 3: CHECK IF REQUEST BODY EXISTS
+    // Important: Don't reject yet - check for valid fields first
+    // ═══════════════════════════════════════════
+    const body = req.body || {};
+    const bodyKeys = Object.keys(body);
+    
+    console.log('🔍 Body exists:', !!req.body);
+    console.log('🔍 Body is object:', typeof body === 'object' && !Array.isArray(body));
+    console.log('🔍 Body keys count:', bodyKeys.length);
+    console.log('🔍 Body keys:', bodyKeys);
+    
+    // ═══════════════════════════════════════════
+    // STEP 4: DEFINE ALLOWED FIELDS AND PROCESSORS
+    // Each field has its own validation logic
+    // ═══════════════════════════════════════════
+    const ALLOWED_FIELDS = {
+      // pricePerKg: accepts number or string, must be positive
+      pricePerKg: (value) => {
+        if (value === undefined || value === null || value === '') return undefined;
+        const num = Number(value);
+        if (isNaN(num) || num <= 0) {
+          console.log('   ⚠️ pricePerKg invalid:', value, '→ skipped');
+          return undefined;
+        }
+        console.log('   ✅ pricePerKg:', value, '→', num);
+        return num;
+      },
+      
+      // inStock: CRITICAL - must handle false correctly!
+      // Uses 'key in object' check, not truthiness
+      inStock: (value) => {
+        // value can be: true, false, 'true', 'false', 1, 0
+        if (value === undefined) return undefined;
+        // Convert to boolean - only true, 'true', 1 become true
+        const bool = value === true || value === 'true' || value === 1;
+        console.log('   ✅ inStock:', value, '(type:', typeof value, ') →', bool);
+        return bool;
+      },
+      
+      // isActive: same as inStock
+      isActive: (value) => {
+        if (value === undefined) return undefined;
+        const bool = value === true || value === 'true' || value === 1;
+        console.log('   ✅ isActive:', value, '→', bool);
+        return bool;
+      },
+      
+      // name: non-empty string
+      name: (value) => {
+        if (value === undefined || value === null) return undefined;
+        const str = String(value).trim();
+        if (str === '') return undefined;
+        console.log('   ✅ name:', value, '→', str);
+        return str;
+      },
+      
+      // category: non-empty string
+      category: (value) => {
+        if (value === undefined || value === null || value === '') return undefined;
+        console.log('   ✅ category:', value);
+        return value;
+      },
+      
+      // stockQuantity: number >= 0 or null
+      stockQuantity: (value) => {
+        if (value === undefined) return undefined;
+        if (value === null || value === '') {
+          console.log('   ✅ stockQuantity: null (unlimited)');
+          return null;
+        }
+        const num = Number(value);
+        if (isNaN(num) || num < 0) return undefined;
+        console.log('   ✅ stockQuantity:', value, '→', num);
+        return num;
+      }
+    };
+    
+    // ═══════════════════════════════════════════
+    // STEP 5: BUILD UPDATE OBJECT
+    // Only include fields that are present AND valid
+    // ═══════════════════════════════════════════
+    const updateFields = {};
+    
+    console.log('\n🔧 Processing fields:');
+    
+    for (const [fieldName, processor] of Object.entries(ALLOWED_FIELDS)) {
+      // CRITICAL: Use 'in' operator to detect field presence
+      // This correctly handles false, 0, null, empty string
+      if (fieldName in body) {
+        const rawValue = body[fieldName];
+        const processedValue = processor(rawValue);
+        
+        // Only add if processor returned a defined value
+        // Note: null is valid for stockQuantity, false is valid for booleans
+        if (processedValue !== undefined) {
+          updateFields[fieldName] = processedValue;
+        }
+      }
+    }
+    
+    console.log('\n📋 Final updateFields:', JSON.stringify(updateFields));
+    console.log('📋 updateFields keys:', Object.keys(updateFields));
+    console.log('📋 updateFields count:', Object.keys(updateFields).length);
+    
+    // ═══════════════════════════════════════════
+    // STEP 6: CHECK IF WE HAVE VALID FIELDS
+    // ═══════════════════════════════════════════
+    if (Object.keys(updateFields).length === 0) {
+      console.log('❌ No valid fields to update after processing');
+      console.log('   Received body:', JSON.stringify(body));
+      console.log('   Allowed fields:', Object.keys(ALLOWED_FIELDS).join(', '));
+      
       return res.status(400).json({
         success: false,
-        message: 'No valid fields provided for update. Request body is empty.'
+        message: 'No valid fields provided for update',
+        hint: `Allowed fields: ${Object.keys(ALLOWED_FIELDS).join(', ')}`,
+        receivedFields: bodyKeys,
+        debug: {
+          bodyReceived: body,
+          bodyType: typeof body,
+          bodyKeysCount: bodyKeys.length
+        }
       });
     }
     
-    // Find existing product
+    // ═══════════════════════════════════════════
+    // STEP 7: FIND OR CREATE PRODUCT
+    // ═══════════════════════════════════════════
     let product = await Product.findOne({ productId });
-    console.log('📦 Found product in DB:', product ? 'YES' : 'NO');
+    console.log('\n📦 Product in DB:', product ? 'FOUND' : 'NOT FOUND');
     
-    // If product doesn't exist in DB, check if it's a valid initial product
     if (!product) {
       const initialProduct = INITIAL_PRODUCTS.find(p => p.productId === productId);
       if (initialProduct) {
-        // Create the product in database
         product = await Product.create({
           ...initialProduct,
           inStock: true,
@@ -472,64 +602,13 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
       }
     }
     
-    // Build update object with only valid, provided fields
-    const updateFields = {};
+    // ═══════════════════════════════════════════
+    // STEP 8: PERFORM UPDATE
+    // ═══════════════════════════════════════════
+    console.log('\n💾 Executing update...');
+    console.log('   Query: { productId:', productId, '}');
+    console.log('   Update: { $set:', JSON.stringify(updateFields), '}');
     
-    // pricePerKg - must be a valid positive number
-    if (req.body.pricePerKg !== undefined && req.body.pricePerKg !== null && req.body.pricePerKg !== '') {
-      const price = parseInt(req.body.pricePerKg);
-      if (!isNaN(price) && price > 0) {
-        updateFields.pricePerKg = price;
-      } else {
-        console.log('⚠️ Invalid pricePerKg ignored:', req.body.pricePerKg);
-      }
-    }
-    
-    // inStock - boolean (must handle false properly)
-    if (req.body.inStock !== undefined && req.body.inStock !== null) {
-      // Handle string 'true'/'false' and boolean values
-      updateFields.inStock = req.body.inStock === true || req.body.inStock === 'true';
-      console.log('📌 Setting inStock to:', updateFields.inStock, '(from:', req.body.inStock, ')');
-    }
-    
-    // isActive - boolean
-    if (req.body.isActive !== undefined && req.body.isActive !== null) {
-      updateFields.isActive = req.body.isActive === true || req.body.isActive === 'true';
-    }
-    
-    // name - non-empty string
-    if (req.body.name !== undefined && req.body.name !== null && String(req.body.name).trim() !== '') {
-      updateFields.name = String(req.body.name).trim();
-    }
-    
-    // category - valid category
-    if (req.body.category !== undefined && req.body.category !== null && req.body.category !== '') {
-      updateFields.category = req.body.category;
-    }
-    
-    // Handle stockQuantity (can be null for unlimited)
-    if (req.body.stockQuantity !== undefined) {
-      if (req.body.stockQuantity === null || req.body.stockQuantity === '') {
-        updateFields.stockQuantity = null;
-      } else {
-        const qty = parseInt(req.body.stockQuantity);
-        if (!isNaN(qty) && qty >= 0) {
-          updateFields.stockQuantity = qty;
-        }
-      }
-    }
-    
-    console.log('📝 Update fields:', updateFields);
-    
-    // Check if there are any fields to update
-    if (Object.keys(updateFields).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No valid fields provided for update'
-      });
-    }
-    
-    // Perform the update using updateOne to get matchedCount/modifiedCount
     const updateResult = await Product.updateOne(
       { productId },
       { $set: updateFields }
@@ -540,35 +619,39 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
       modifiedCount: updateResult.modifiedCount
     });
     
-    // Check if product was found
     if (updateResult.matchedCount === 0) {
-      console.log('❌ No product matched productId:', productId);
       return res.status(404).json({
         success: false,
-        message: `Product with ID ${productId} not found in database`,
-        matchedCount: 0,
-        modifiedCount: 0
+        message: `Product with ID ${productId} not found in database`
       });
     }
     
-    // Fetch the updated product
+    // ═══════════════════════════════════════════
+    // STEP 9: RETURN UPDATED PRODUCT
+    // ═══════════════════════════════════════════
     const updatedProduct = await Product.findOne({ productId });
     
-    console.log('✅ Product updated successfully');
-    console.log('   New price:', updatedProduct.pricePerKg);
-    console.log('   In stock:', updatedProduct.inStock);
-    console.log('═══════════════════════════════════════════\n');
+    console.log('\n╔════════════════════════════════════════════════════════╗');
+    console.log('║       ✅ PRODUCT UPDATED SUCCESSFULLY                  ║');
+    console.log('╚════════════════════════════════════════════════════════╝');
+    console.log('   Product ID:', updatedProduct.productId);
+    console.log('   Name:', updatedProduct.name);
+    console.log('   Price/kg:', updatedProduct.pricePerKg);
+    console.log('   In Stock:', updatedProduct.inStock);
+    console.log('   Is Active:', updatedProduct.isActive);
+    console.log('');
     
     res.json({
       success: true,
       message: 'Product updated successfully',
       product: formatProduct(updatedProduct),
+      updatedFields: Object.keys(updateFields),
       matchedCount: updateResult.matchedCount,
       modifiedCount: updateResult.modifiedCount
     });
     
   } catch (error) {
-    console.error('❌ Update error:', error);
+    console.error('\n❌ UPDATE ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update product: ' + error.message
