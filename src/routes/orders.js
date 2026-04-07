@@ -32,10 +32,31 @@ const getRazorpay = () => {
 
 router.get('/products', async (req, res) => {
   try {
-    console.log('📦 Fetching products with overrides...');
+    console.log('\n📦 ===== GET /api/orders/products =====');
+    console.log('   Timestamp:', new Date().toISOString());
+    
+    // Check MongoDB connection
+    const mongoose = (await import('mongoose')).default;
+    const connectionState = mongoose.connection.readyState;
+    console.log('   MongoDB Connection State:', connectionState === 1 ? '✅ Connected' : `❌ Not connected (${connectionState})`);
+    
+    if (connectionState !== 1) {
+      console.log('❌ MongoDB not connected!');
+      return res.status(500).json({
+        success: false,
+        message: 'Database not connected'
+      });
+    }
     
     const overrides = await ProductOverride.find();
-    console.log(`   Found ${overrides.length} product overrides`);
+    console.log(`   Found ${overrides.length} product overrides in database`);
+    
+    if (overrides.length > 0) {
+      console.log('   Override details:');
+      overrides.forEach(o => {
+        console.log(`     - Product ${o.productId}: price=${o.pricePerKg}, inStock=${o.inStock}`);
+      });
+    }
     
     const overrideMap = new Map(overrides.map(o => [o.productId, o]));
     
@@ -52,8 +73,9 @@ router.get('/products', async (req, res) => {
           price: Math.floor(pricePerKg * 0.25),
           weights: product.weights,
           weightPrices: calculateWeightPrices(pricePerKg),
-          inStock: override.inStock,
-          isActive: override.isActive
+          inStock: override.inStock !== undefined ? override.inStock : true,
+          isActive: override.isActive !== undefined ? override.isActive : true,
+          hasOverride: true
         };
       }
       
@@ -66,15 +88,19 @@ router.get('/products', async (req, res) => {
         weights: product.weights,
         weightPrices: product.weightPrices,
         inStock: true,
-        isActive: true
+        isActive: true,
+        hasOverride: false
       };
     }).filter(p => p.isActive);
     
     console.log(`✅ Returning ${products.length} products`);
+    console.log('=========================================\n');
+    
     res.json({
       success: true,
       products,
-      count: products.length
+      count: products.length,
+      overrideCount: overrides.length
     });
   } catch (error) {
     console.error('❌ Get products error:', {
