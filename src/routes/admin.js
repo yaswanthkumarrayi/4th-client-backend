@@ -520,6 +520,87 @@ router.get('/debug/db', verifyAdminToken, async (req, res) => {
 });
 
 // ============================================
+// DEBUG: Public test endpoint (NO AUTH - for testing only)
+// ============================================
+
+router.get('/debug/test-write', async (req, res) => {
+  console.log('\n🧪 ===== PUBLIC DEBUG TEST =====');
+  
+  try {
+    const mongoose = (await import('mongoose')).default;
+    
+    // Step 1: Check connection
+    const state = mongoose.connection.readyState;
+    console.log('Connection state:', state, state === 1 ? '(connected)' : '(NOT connected)');
+    console.log('Database name:', mongoose.connection.name);
+    
+    if (state !== 1) {
+      return res.status(500).json({
+        success: false,
+        message: 'MongoDB not connected',
+        state
+      });
+    }
+    
+    // Step 2: Try to write
+    const testProductId = 99999;
+    const testPrice = Math.floor(Math.random() * 1000) + 100;
+    
+    console.log('Writing test data: productId=' + testProductId + ', price=' + testPrice);
+    
+    const writeResult = await ProductOverride.updateOne(
+      { productId: testProductId },
+      { $set: { productId: testProductId, pricePerKg: testPrice, inStock: true, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    
+    console.log('Write result:', JSON.stringify(writeResult));
+    
+    // Step 3: Read it back
+    const readDoc = await ProductOverride.findOne({ productId: testProductId });
+    console.log('Read back:', readDoc ? JSON.stringify(readDoc) : 'NOT FOUND');
+    
+    // Step 4: Verify
+    const success = readDoc && readDoc.pricePerKg === testPrice;
+    console.log('Verification:', success ? 'PASSED' : 'FAILED');
+    
+    // Step 5: Clean up
+    await ProductOverride.deleteOne({ productId: testProductId });
+    console.log('Cleanup: Test document deleted');
+    console.log('===================================\n');
+    
+    // Step 6: List all overrides
+    const allOverrides = await ProductOverride.find();
+    
+    res.json({
+      success,
+      test: {
+        wrote: testPrice,
+        readBack: readDoc?.pricePerKg,
+        matched: success
+      },
+      database: {
+        name: mongoose.connection.name,
+        host: mongoose.connection.host,
+        state: state
+      },
+      existingOverrides: allOverrides.map(o => ({
+        productId: o.productId,
+        pricePerKg: o.pricePerKg,
+        inStock: o.inStock
+      }))
+    });
+  } catch (error) {
+    console.error('Test write error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ============================================
 // COUPONS MANAGEMENT
 // ============================================
 
