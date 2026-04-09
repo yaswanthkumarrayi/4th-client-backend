@@ -258,16 +258,23 @@ router.post('/verify', verifyToken, async (req, res) => {
     console.log(`✅ Payment verified: ${order.orderId} | Payment: ${razorpay_payment_id}`);
 
     // Send payment confirmation email (async, don't wait)
+    // PRODUCTION FIX: Properly track email sending
     if (!order.emailsSent.paymentConfirmation) {
       sendPaymentConfirmationEmail(order)
         .then(async (result) => {
           if (result.success) {
             order.emailsSent.paymentConfirmation = true;
             await order.save();
-            console.log(`📧 Payment confirmation email sent for ${order.orderId}`);
+            console.log(`✅ Payment confirmation email SENT for ${order.orderId}`);
+          } else {
+            console.error(`⚠️ Payment email FAILED for ${order.orderId}: ${result.error}`);
+            // Email failed but order is still confirmed
+            // Don't block the user, but log it for debugging
           }
         })
-        .catch(err => console.error(`📧 Email error for ${order.orderId}:`, err.message));
+        .catch(err => {
+          console.error(`⚠️ Unexpected error sending payment email for ${order.orderId}:`, err.message);
+        });
     }
 
     res.json({

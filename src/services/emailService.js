@@ -47,19 +47,39 @@ const getTransporter = () => {
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
 
+    // Debug logs for production troubleshooting
+    console.log(`📧 Email Config Check:`);
+    console.log(`   Host: ${host}`);
+    console.log(`   Port: ${port}`);
+    console.log(`   User: ${user ? '✓ Set' : '✗ Missing'}`);
+    console.log(`   Pass: ${pass ? '✓ Set' : '✗ Missing'}`);
+
     if (!user || !pass) {
-      console.warn('⚠️ Email service not configured: SMTP_USER and SMTP_PASS required');
+      console.error('❌ CRITICAL: Email service NOT configured. Set SMTP_USER and SMTP_PASS in environment variables.');
       return null;
     }
 
     transporter = nodemailer.createTransport({
       host,
       port,
-      secure: port === 465,
-      auth: { user, pass }
+      secure: port === 465, // Use TLS for port 587, SSL for 465
+      auth: { user, pass },
+      // Add timeout for Render environment
+      connectionTimeout: 5000,
+      socketTimeout: 5000,
+      // Reject unauthorized certificates in production
+      tls: { rejectUnauthorized: true }
     });
 
-    console.log(`✅ Email transporter configured: ${host}:${port}`);
+    // Test connection on first initialization
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('❌ SMTP transporter error:', error.message);
+        console.error('   This could be: wrong password, blocked account, incorrect host/port');
+      } else {
+        console.log('✅ SMTP transporter verified and ready');
+      }
+    });
   }
   return transporter;
 };
@@ -284,49 +304,112 @@ const emailWrapper = (title, content, trackOrderButton = true, orderId = '') => 
 
 /**
  * Send email helper with admin notification
+ * PRODUCTION-SAFE: Includes detailed error logging and timeout handling
  */
 const sendEmail = async (to, subject, html) => {
   const transport = getTransporter();
   
   if (!transport) {
-    console.log(`📧 [MOCK] Would send email to ${to}: ${subject}`);
-    return { success: true, mock: true };
+    console.warn(`⚠️ [MOCK MODE] Email not configured. Would send to ${to}: ${subject}`);
+    return { success: false, error: 'SMTP not configured', mock: true };
   }
+
+  const startTime = Date.now();
+  const adminEmail = process.env.ADMIN_EMAIL || 'yash.freelancer17@gmail.com';
 
   try {
     const fromName = process.env.SMTP_FROM_NAME || BUSINESS_INFO.name;
     const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-    const adminEmail = 'yash.freelancer17@gmail.com';
 
-    // Send to customer
-    const customerEmail = await transport.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to,
-      subject,
-      html
-    });
-
-    console.log(`✅ Email sent to customer ${to}: ${subject} (${customerEmail.messageId})`);
-
-    // Send copy to admin (simplified version)
-    try {
-      const adminSubject = `[ADMIN COPY] ${subject}`;
-      await transport.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
-        to: adminEmail,
-        subject: adminSubject,
-        html
-      });
-      console.log(`📧 Admin notification sent to ${adminEmail}`);
-    } catch (adminError) {
-      console.error(`⚠️ Failed to send admin copy:`, adminError.message);
-      // Don't fail the whole operation if admin email fails
+    if (!fromEmail) {
+      throw new Error('SMTP_USER not configured - cannot send emails');
     }
 
-    return { success: true, messageId: customerEmail.messageId };
+    console.log(`📧 Sending email to ${to} | Subject: ${subject}`);
+
+    // Send to customer with timeout protection
+    const customerEmail = await Promise.race([
+      transport.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to,
+        subject,
+        html,
+        // Add headers for better deliverability
+        headers: {
+          'X-Priority': '3',
+          'X-Mailer': 'Samskruthi Foods Mailer'
+        }
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Email send timeout after 10s')), 10000)
+      )
+    ]);
+
+    const duration = Date.now() - startTime;
+    console.log(`✅ Customer email sent: ${to} | MessageID: ${customerEmail.messageId} | Duration: ${duration}ms`);
+
+    // Send copy to admin (don't fail main operation if this fails)
+    (async () => {
+      try {
+        const adminSubject = `[ADMIN COPY] ${subject}`;
+        const adminEmail = process.env.ADMIN_EMAIL || 'yash.freelancer17@gmail.com';
+        
+        await Promise.race([
+          transport.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: adminEmail,
+            subject: adminSubject,
+            html,
+            headers: {
+              'X-Priority': '3',
+              'X-Mailer': 'Samskruthi Foods Mailer'
+            }
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Admin email timeout')), 5000)
+          )
+        ]);
+        
+        console.log(`📧 Admin copy sent to ${adminEmail}`);
+      } catch (adminError) {
+        console.error(`⚠️ Admin email failed (non-critical):`, adminError.message);
+      }
+    })();
+
+    return { 
+      success: true, 
+      messageId: customerEmail.messageId,
+      duration,
+      to 
+    };
+    
   } catch (error) {
-    console.error(`❌ Email failed to ${to}:`, error.message);
-    return { success: false, error: error.message };
+    const duration = Date.now() - startTime;
+    
+    // DETAILED ERROR LOGGING FOR PRODUCTION DEBUG
+    console.error(`\n❌ EMAIL SEND FAILED (${duration}ms)`);
+    console.error(`   Recipient: ${to}`);
+    console.error(`   Subject: ${subject}`);
+    console.error(`   Error Type: ${error.name}`);
+    console.error(`   Error Message: ${error.message}`);
+    
+    if (error.message.includes('Invalid login')) {
+      console.error(`   → CAUSE: Wrong Gmail password or account blocked`);
+      console.error(`   → FIX: Verify SMTP_PASS is correct Gmail App Password`);
+    } else if (error.message.includes('timeout')) {
+      console.error(`   → CAUSE: Network timeout to SMTP server`);
+      console.error(`   → FIX: Check if Render can reach smtp.gmail.com:587`);
+    } else if (error.message.includes('ECONNREFUSED')) {
+      console.error(`   → CAUSE: Cannot connect to SMTP server`);
+      console.error(`   → FIX: Verify SMTP_HOST and SMTP_PORT are correct`);
+    }
+    
+    return { 
+      success: false, 
+      error: error.message,
+      to,
+      duration
+    };
   }
 };
 
