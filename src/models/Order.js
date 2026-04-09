@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 import { ORDER_STATUS, PAYMENT_STATUS } from '../config/orderStatus.js';
 
+/**
+ * Order Item Schema
+ * Stores complete product details for order history display
+ */
 const orderItemSchema = new mongoose.Schema({
   productId: {
     type: Number,
@@ -16,7 +20,8 @@ const orderItemSchema = new mongoose.Schema({
   },
   image: {
     type: String,
-    required: false
+    required: false,
+    default: ''
   },
   weight: {
     type: String,
@@ -108,6 +113,15 @@ const orderSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now },
     note: String
   }],
+  
+  // Email tracking flags - prevent duplicate emails
+  emailsSent: {
+    paymentConfirmation: { type: Boolean, default: false },
+    orderReceived: { type: Boolean, default: false },
+    outForDelivery: { type: Boolean, default: false },
+    delivered: { type: Boolean, default: false }
+  },
+  
   notes: {
     type: String,
     default: ''

@@ -1,6 +1,7 @@
 import express from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
 import Product from '../models/Product.js';
@@ -86,6 +87,18 @@ const getRazorpay = () => {
 router.get('/products', async (req, res) => {
   try {
     console.log('\n📦 ===== GET /api/orders/products =====');
+    console.log('   Origin:', req.headers.origin);
+    console.log('   User-Agent:', req.headers['user-agent']);
+    
+    // Check database connection
+    if (!mongoose.connection.readyState) {
+      console.error('❌ Database not connected!');
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection not available',
+        error: 'SERVICE_UNAVAILABLE'
+      });
+    }
     
     // Fetch products from database
     let products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
@@ -93,17 +106,23 @@ router.get('/products', async (req, res) => {
     // Auto-seed if empty
     if (products.length === 0) {
       console.log('⚠️ No products found. Auto-seeding database...');
-      for (const p of INITIAL_PRODUCTS) {
-        await Product.create({ ...p, inStock: true, isActive: true });
+      try {
+        for (const p of INITIAL_PRODUCTS) {
+          await Product.create({ ...p, inStock: true, isActive: true });
+        }
+        products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
+        console.log(`✅ Seeded ${products.length} products`);
+      } catch (seedError) {
+        console.error('❌ Seed error:', seedError.message);
+        // Continue even if seeding fails
       }
-      products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
-      console.log(`✅ Seeded ${products.length} products`);
     }
     
     // Format for API response
     const formattedProducts = products.map(formatProduct);
     
     console.log(`✅ Returning ${formattedProducts.length} products`);
+    console.log('   Sample product:', formattedProducts[0] ? formattedProducts[0].name : 'N/A');
     console.log('=========================================\n');
     
     res.json({
@@ -112,10 +131,15 @@ router.get('/products', async (req, res) => {
       count: formattedProducts.length
     });
   } catch (error) {
-    console.error('❌ Get products error:', error.message);
+    console.error('❌ Get products error:', error);
+    console.error('   Stack:', error.stack);
+    
+    // Return detailed error in development
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products'
+      message: 'Failed to fetch products',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });

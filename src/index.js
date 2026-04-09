@@ -1,12 +1,15 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 import connectDB from './config/db.js';
 import { initializeFirebase, isFirebaseInitialized } from './config/firebase.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
+import paymentRoutes from './routes/payment.js';
+import webhookRoutes from './routes/webhook.js';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -47,7 +50,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware - CORS configuration (PRODUCTION READY)
 const allowedOrigins = process.env.FRONTEND_URL 
   ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
-  : ['http://localhost:5173'];
+  : ['http://localhost:5173', 'http://localhost:3000'];
 
 console.log('✅ Allowed CORS Origins:', allowedOrigins);
 
@@ -55,15 +58,18 @@ app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (mobile apps, curl, Postman, etc.)
     if (!origin) {
+      console.log('   ℹ️  Request with no origin (Postman/curl) - ALLOWED');
       return callback(null, true);
     }
     
     // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
+      console.log(`   ✅ CORS allowed for origin: ${origin}`);
       callback(null, true);
     } else {
-      console.warn(`⚠️  CORS blocked request from unauthorized origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`   ⚠️  CORS blocked request from unauthorized origin: ${origin}`);
+      console.warn(`   📋 Allowed origins: ${allowedOrigins.join(', ')}`);
+      callback(new Error(`Not allowed by CORS. Origin '${origin}' is not in the allowed list.`));
     }
   },
   credentials: true,
@@ -85,7 +91,11 @@ app.options('*', cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 }));
 
-// CRITICAL: Parse JSON bodies - must be before routes
+// CRITICAL: Webhook route MUST be mounted BEFORE express.json()
+// Razorpay webhook needs raw body for signature verification
+app.use('/api/webhook/razorpay', express.raw({ type: 'application/json' }), webhookRoutes);
+
+// CRITICAL: Parse JSON bodies - must be before other routes
 app.use(express.json({ limit: '10mb' }));
 
 // Also parse URL-encoded bodies (for form submissions)
@@ -109,10 +119,24 @@ app.use((req, res, next) => {
 
 // STEP 4: Mount Routes
 console.log('📌 STEP 4: Mounting API routes...');
+
+// Rate limiting for payment endpoints (10 requests per 15 minutes)
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { 
+    success: false, 
+    message: 'Too many payment requests. Please try again later.' 
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/payment', paymentLimiter, paymentRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -170,12 +194,19 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-// Error handler
+// Error handler - MUST send JSON response
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', err);
-  res.status(500).json({ 
+  console.error('   Path:', req.path);
+  console.error('   Method:', req.method);
+  console.error('   Stack:', err.stack);
+  
+  // Always send JSON response, never leave hanging
+  res.status(err.status || 500).json({ 
     success: false, 
-    message: 'Internal server error' 
+    message: err.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    timestamp: new Date().toISOString()
   });
 });
 

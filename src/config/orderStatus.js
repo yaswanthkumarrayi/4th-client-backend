@@ -13,6 +13,13 @@ export const ORDER_STATUS = [
   'cancelled'
 ];
 
+// Admin workflow statuses (3 simple steps)
+export const ADMIN_WORKFLOW_STATUS = [
+  'processing',
+  'out_for_delivery',
+  'delivered'
+];
+
 export const PAYMENT_STATUS = [
   'pending',
   'paid',

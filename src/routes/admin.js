@@ -4,6 +4,11 @@ import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
 import Product from '../models/Product.js';
 import { ORDER_STATUS, isValidOrderStatus } from '../config/orderStatus.js';
+import { 
+  sendOrderReceivedEmail, 
+  sendOutForDeliveryEmail, 
+  sendDeliveredEmail 
+} from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -310,16 +315,22 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
       });
     }
     
+    const previousStatus = order.orderStatus;
+    
     // Use normalizedStatus for database update
     order.addStatusHistory(normalizedStatus, note || '');
     await order.save();
     
     console.log('✅ Order status updated to:', normalizedStatus);
     
+    // Send appropriate email based on new status (async, don't wait)
+    sendStatusEmail(order, normalizedStatus);
+    
     res.json({
       success: true,
       message: 'Order status updated',
-      order
+      order,
+      emailsSent: order.emailsSent
     });
   } catch (error) {
     console.error('❌ Update order status error:', error);
@@ -329,6 +340,48 @@ router.put('/orders/:orderId/status', verifyAdminToken, async (req, res) => {
     });
   }
 });
+
+/**
+ * Send appropriate email based on status change
+ * Only sends if email hasn't been sent before (idempotent)
+ */
+async function sendStatusEmail(order, status) {
+  try {
+    // Map status to email function and flag
+    const statusEmailMap = {
+      'confirmed': { emailFn: sendOrderReceivedEmail, flag: 'orderReceived' },
+      'processing': { emailFn: sendOrderReceivedEmail, flag: 'orderReceived' },
+      'out_for_delivery': { emailFn: sendOutForDeliveryEmail, flag: 'outForDelivery' },
+      'delivered': { emailFn: sendDeliveredEmail, flag: 'delivered' }
+    };
+    
+    const emailConfig = statusEmailMap[status];
+    
+    if (!emailConfig) {
+      console.log(`ℹ️ No email configured for status: ${status}`);
+      return;
+    }
+    
+    // Check if email already sent
+    if (order.emailsSent[emailConfig.flag]) {
+      console.log(`ℹ️ Email already sent for ${emailConfig.flag} - skipping`);
+      return;
+    }
+    
+    // Send email
+    const result = await emailConfig.emailFn(order);
+    
+    if (result.success) {
+      order.emailsSent[emailConfig.flag] = true;
+      await order.save();
+      console.log(`📧 ${emailConfig.flag} email sent for order ${order.orderId}`);
+    } else {
+      console.error(`📧 Failed to send ${emailConfig.flag} email:`, result.error);
+    }
+  } catch (error) {
+    console.error('📧 Email send error:', error.message);
+  }
+}
 
 // ============================================
 // PRODUCTS MANAGEMENT (Single Source of Truth)
