@@ -12,6 +12,8 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
+import productRoutes from './routes/productRoutes.js';
+import { apiCompression } from './middleware/compression.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // STEP 1: Load Environment Variables
@@ -46,6 +48,7 @@ connectDB();
 console.log('📌 STEP 3: Setting up Express server...');
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.set('etag', 'strong');
 
 // ═══════════════════════════════════════════════════════════════════
 // STEP 5: CORS Configuration (PRODUCTION-READY)
@@ -87,6 +90,7 @@ app.options('*', cors(corsOptions));
 // ═══════════════════════════════════════════════════════════════════
 // STEP 6: Body Parser Middleware
 // ═══════════════════════════════════════════════════════════════════
+app.use(apiCompression);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -131,12 +135,14 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/products', productRoutes);
 
 console.log('✅ Routes mounted:');
 console.log('   - /api/auth/*');
 console.log('   - /api/user/*');
 console.log('   - /api/admin/*');
 console.log('   - /api/orders/*');
+console.log('   - /api/products/*');
 
 // ═══════════════════════════════════════════════════════════════════
 // STEP 10: 404 Handler (Route Not Found)
@@ -155,7 +161,8 @@ app.use((req, res) => {
       'POST /api/auth/sync',
       'GET  /api/user/profile',
       'PUT  /api/user/profile',
-      'GET  /api/orders/products'
+      'GET  /api/orders/products',
+      'GET  /api/products'
     ]
   });
 });

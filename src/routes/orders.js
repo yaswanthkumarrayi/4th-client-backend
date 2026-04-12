@@ -1,12 +1,12 @@
 import express from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
-import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
 import Product from '../models/Product.js';
 import User from '../models/User.js';
 import { verifyToken } from '../middleware/auth.js';
+import { getProducts as getPublicProducts } from '../controllers/productController.js';
 
 const router = express.Router();
 
@@ -17,52 +17,6 @@ const calculateWeightPrices = (pricePerKg) => ({
   '1kg': pricePerKg,
   '2kg': pricePerKg * 2
 });
-
-// Helper: Format product for API response
-const formatProduct = (product) => ({
-  id: product.productId,
-  productId: product.productId,
-  name: product.name,
-  category: product.category,
-  pricePerKg: product.pricePerKg,
-  price: Math.floor(product.pricePerKg * 0.25),
-  weights: ['250gm', '500gm', '1kg', '2kg'],
-  weightPrices: calculateWeightPrices(product.pricePerKg),
-  inStock: product.inStock,
-  stockQuantity: product.stockQuantity,
-  isActive: product.isActive
-});
-
-// Initial products for auto-seeding
-const INITIAL_PRODUCTS = [
-  { productId: 1, name: 'Mango Avakaya', category: 'Veg Pickles', pricePerKg: 750 },
-  { productId: 2, name: 'Gongura Pickle', category: 'Veg Pickles', pricePerKg: 750 },
-  { productId: 10, name: 'Ginger Pickle', category: 'Veg Pickles', pricePerKg: 750 },
-  { productId: 11, name: 'Lemon Pickle', category: 'Veg Pickles', pricePerKg: 750 },
-  { productId: 12, name: 'Red Chilli Pickle', category: 'Veg Pickles', pricePerKg: 750 },
-  { productId: 13, name: 'Usirikaya Pickle', category: 'Veg Pickles', pricePerKg: 750 },
-  { productId: 3, name: 'Chicken Pickle', category: 'Non Veg Pickles', pricePerKg: 1999 },
-  { productId: 4, name: 'Prawns Pickle', category: 'Non Veg Pickles', pricePerKg: 2499 },
-  { productId: 14, name: 'Mutton Boneless Pickle', category: 'Non Veg Pickles', pricePerKg: 2799 },
-  { productId: 7, name: 'Kandi Podi', category: 'Podis', pricePerKg: 1400 },
-  { productId: 8, name: 'Karvepaku Podi', category: 'Podis', pricePerKg: 1400 },
-  { productId: 9, name: 'Kobbari Podi', category: 'Podis', pricePerKg: 1400 },
-  { productId: 101, name: 'Mixture', category: 'Snacks', pricePerKg: 550 },
-  { productId: 102, name: 'Murukulu', category: 'Snacks', pricePerKg: 550 },
-  { productId: 103, name: 'Ribbon Pakodi', category: 'Snacks', pricePerKg: 550 },
-  { productId: 201, name: 'Ariselu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 202, name: 'Bandharu Laddu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 203, name: 'Boondhi Achu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 204, name: 'Boondhi Laddu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 205, name: 'Boorelu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 206, name: 'Cashew Achu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 207, name: 'Kajji Kayalu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 208, name: 'Mysore Pak', category: 'Sweets', pricePerKg: 799 },
-  { productId: 209, name: 'Nuvvundalu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 210, name: 'Palli Undalu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 211, name: 'Sanna Boondhi Laddu', category: 'Sweets', pricePerKg: 799 },
-  { productId: 212, name: 'Sunnunda', category: 'Sweets', pricePerKg: 799 },
-];
 
 // Lazy initialization of Razorpay (only when needed)
 let razorpay = null;
@@ -84,64 +38,10 @@ const getRazorpay = () => {
 // PUBLIC: Get products from database
 // ============================================
 
-router.get('/products', async (req, res) => {
-  try {
-    console.log('\n📦 ===== GET /api/orders/products =====');
-    console.log('   Origin:', req.headers.origin);
-    console.log('   User-Agent:', req.headers['user-agent']);
-    
-    // Check database connection
-    if (!mongoose.connection.readyState) {
-      console.error('❌ Database not connected!');
-      return res.status(503).json({
-        success: false,
-        message: 'Database connection not available',
-        error: 'SERVICE_UNAVAILABLE'
-      });
-    }
-    
-    // Fetch products from database
-    let products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
-    
-    // Auto-seed if empty
-    if (products.length === 0) {
-      console.log('⚠️ No products found. Auto-seeding database...');
-      try {
-        for (const p of INITIAL_PRODUCTS) {
-          await Product.create({ ...p, inStock: true, isActive: true });
-        }
-        products = await Product.find({ isActive: true }).sort({ category: 1, productId: 1 });
-        console.log(`✅ Seeded ${products.length} products`);
-      } catch (seedError) {
-        console.error('❌ Seed error:', seedError.message);
-        // Continue even if seeding fails
-      }
-    }
-    
-    // Format for API response
-    const formattedProducts = products.map(formatProduct);
-    
-    console.log(`✅ Returning ${formattedProducts.length} products`);
-    console.log('   Sample product:', formattedProducts[0] ? formattedProducts[0].name : 'N/A');
-    console.log('=========================================\n');
-    
-    res.json({
-      success: true,
-      products: formattedProducts,
-      count: formattedProducts.length
-    });
-  } catch (error) {
-    console.error('❌ Get products error:', error);
-    console.error('   Stack:', error.stack);
-    
-    // Return detailed error in development
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch products',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString()
-    });
-  }
+router.get('/products', (req, res) => {
+  req.query.page = req.query.page || '1';
+  req.query.limit = req.query.limit || '100';
+  return getPublicProducts(req, res);
 });
 
 // ============================================
@@ -225,7 +125,9 @@ router.post('/create-order', verifyToken, async (req, res) => {
     
     for (const item of items) {
       // Fetch product from database
-      const product = await Product.findOne({ productId: item.productId });
+      const product = await Product.findOne({ productId: item.productId })
+        .select('productId name category pricePerKg inStock')
+        .lean();
       if (!product) {
         return res.status(400).json({
           success: false,

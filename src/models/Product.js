@@ -43,6 +43,11 @@ const productSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Query-performance indexes for product APIs.
+productSchema.index({ isActive: 1, category: 1, productId: 1 });
+productSchema.index({ isActive: 1, productId: 1 });
+productSchema.index({ isActive: 1, inStock: 1, productId: 1 });
+
 // Calculate weight prices based on pricePerKg
 productSchema.methods.getWeightPrices = function() {
   return {

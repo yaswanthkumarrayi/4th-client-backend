@@ -9,6 +9,7 @@ import {
   sendOutForDeliveryEmail, 
   sendDeliveredEmail 
 } from '../services/emailService.js';
+import { clearResponseCacheByPrefix } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -71,6 +72,8 @@ const formatProduct = (product) => ({
   isActive: product.isActive,
   updatedAt: product.updatedAt
 });
+
+const clearProductCache = () => clearResponseCacheByPrefix('products:');
 
 // ============================================
 // ADMIN AUTH
@@ -415,11 +418,13 @@ router.post('/products/seed', verifyAdminToken, async (req, res) => {
     }
     
     console.log(`✅ Seeded ${INITIAL_PRODUCTS.length} products`);
+    const cacheEntriesCleared = clearProductCache();
     
     res.json({
       success: true,
       message: `Seeded ${INITIAL_PRODUCTS.length} products successfully`,
-      count: INITIAL_PRODUCTS.length
+      count: INITIAL_PRODUCTS.length,
+      cacheEntriesCleared
     });
   } catch (error) {
     console.error('Seed error:', error);
@@ -434,6 +439,7 @@ router.post('/products/seed', verifyAdminToken, async (req, res) => {
 router.get('/products', verifyAdminToken, async (req, res) => {
   try {
     console.log('\n📋 ===== FETCHING PRODUCTS FROM DATABASE =====');
+    let cacheEntriesCleared = 0;
     
     // Fetch all products from MongoDB
     let products = await Product.find().sort({ category: 1, productId: 1 });
@@ -450,6 +456,7 @@ router.get('/products', verifyAdminToken, async (req, res) => {
       }
       products = await Product.find().sort({ category: 1, productId: 1 });
       console.log(`✅ Auto-seeded ${products.length} products`);
+      cacheEntriesCleared = clearProductCache();
     }
     
     // Format products for response
@@ -460,7 +467,8 @@ router.get('/products', verifyAdminToken, async (req, res) => {
     
     res.json({
       success: true,
-      products: formattedProducts
+      products: formattedProducts,
+      cacheEntriesCleared
     });
   } catch (error) {
     console.error('❌ Get products error:', error);
@@ -693,6 +701,7 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
     console.log('   In Stock:', updatedProduct.inStock);
     console.log('   Is Active:', updatedProduct.isActive);
     console.log('');
+    const cacheEntriesCleared = clearProductCache();
     
     res.json({
       success: true,
@@ -700,7 +709,8 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
       product: formatProduct(updatedProduct),
       updatedFields: Object.keys(updateFields),
       matchedCount: updateResult.matchedCount,
-      modifiedCount: updateResult.modifiedCount
+      modifiedCount: updateResult.modifiedCount,
+      cacheEntriesCleared
     });
     
   } catch (error) {
@@ -739,11 +749,13 @@ router.delete('/products/:productId/override', verifyAdminToken, async (req, res
       },
       { new: true }
     );
+    const cacheEntriesCleared = clearProductCache();
     
     res.json({
       success: true,
       message: 'Product reset to default',
-      product: formatProduct(result)
+      product: formatProduct(result),
+      cacheEntriesCleared
     });
   } catch (error) {
     console.error('Reset error:', error);

@@ -10,6 +10,8 @@ import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
 import paymentRoutes from './routes/payment.js';
 import webhookRoutes from './routes/webhook.js';
+import productRoutes from './routes/productRoutes.js';
+import { apiCompression } from './middleware/compression.js';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -46,6 +48,7 @@ connectDB();
 console.log('📌 STEP 3: Setting up Express server...');
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.set('etag', 'strong');
 
 // Middleware - CORS configuration (PRODUCTION READY)
 const allowedOrigins = process.env.FRONTEND_URL 
@@ -95,6 +98,9 @@ app.options('*', cors({
 // Razorpay webhook needs raw body for signature verification
 app.use('/api/webhook/razorpay', express.raw({ type: 'application/json' }), webhookRoutes);
 
+// Compress JSON/API responses to reduce payload transfer time.
+app.use(apiCompression);
+
 // CRITICAL: Parse JSON bodies - must be before other routes
 app.use(express.json({ limit: '10mb' }));
 
@@ -137,6 +143,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payment', paymentLimiter, paymentRoutes);
+app.use('/api/products', productRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
