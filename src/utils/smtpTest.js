@@ -9,7 +9,7 @@
  * - Port 465 (SSL/TLS)
  */
 
-const net = require('net');
+import net from 'net';
 
 const SMTP_HOST = 'smtp.gmail.com';
 const PORTS_TO_TEST = [587, 465];
@@ -110,4 +110,4 @@ async function runSmtpTest() {
   }
 }
 
-module.exports = { runSmtpTest };
+export { runSmtpTest };
