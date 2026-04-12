@@ -56,12 +56,18 @@ router.post('/create-order', verifyToken, async (req, res) => {
     const { 
       items, 
       customer, 
-      subtotal, 
+      subtotal = 0,
       discount = 0, 
       couponCode = null,
       deliveryCharge = 0, 
       totalAmount 
     } = req.body;
+
+    const customerEmail = req.user?.email || customer?.email;
+    const parsedSubtotal = Number(subtotal);
+    const parsedDiscount = Number(discount) || 0;
+    const parsedDeliveryCharge = Number(deliveryCharge) || 0;
+    const parsedTotalAmount = Number(totalAmount);
 
     // Validation
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -71,18 +77,61 @@ router.post('/create-order', verifyToken, async (req, res) => {
       });
     }
 
-    if (!customer || !customer.name || !customer.email || !customer.mobile || !customer.address || !customer.pincode) {
+    if (!customer || !customer.name || !customerEmail || !customer.mobile || !customer.address || !customer.pincode) {
       return res.status(400).json({
         success: false,
         message: 'Complete customer details are required'
       });
     }
 
-    if (!totalAmount || totalAmount <= 0) {
+    if (!Number.isFinite(parsedSubtotal) || parsedSubtotal < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subtotal amount'
+      });
+    }
+
+    if (!Number.isFinite(parsedTotalAmount) || parsedTotalAmount <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Invalid total amount'
       });
+    }
+
+    const normalizedItems = items.map((item) => {
+      const quantity = Number(item?.quantity);
+      const price = Number(item?.price);
+      const total = Number(item?.total);
+      return {
+        productId: Number(item?.productId),
+        name: String(item?.name || '').trim(),
+        category: String(item?.category || '').trim() || 'Uncategorized',
+        image: item?.image || '',
+        weight: String(item?.weight || '').trim(),
+        quantity,
+        price,
+        total: Number.isFinite(total) ? total : price * quantity
+      };
+    });
+
+    for (let i = 0; i < normalizedItems.length; i += 1) {
+      const item = normalizedItems[i];
+      if (
+        !Number.isFinite(item.productId) ||
+        !item.name ||
+        !item.weight ||
+        !Number.isFinite(item.quantity) ||
+        item.quantity < 1 ||
+        !Number.isFinite(item.price) ||
+        item.price < 0 ||
+        !Number.isFinite(item.total) ||
+        item.total < 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid item data at index ${i}`
+        });
+      }
     }
 
     // Find or verify user
@@ -90,10 +139,21 @@ router.post('/create-order', verifyToken, async (req, res) => {
     let user = await User.findOne({ firebaseUid });
 
     if (!user) {
+      user = await User.findOne({ email: customerEmail.toLowerCase() });
+      if (user && user.firebaseUid !== firebaseUid) {
+        user.firebaseUid = firebaseUid;
+        if (!user.phone) {
+          user.phone = customer.mobile;
+        }
+        await user.save();
+      }
+    }
+
+    if (!user) {
       // Create user if doesn't exist
       user = new User({
         firebaseUid,
-        email: customer.email,
+        email: customerEmail.toLowerCase(),
         name: customer.name,
         phone: customer.mobile
       });
@@ -102,12 +162,12 @@ router.post('/create-order', verifyToken, async (req, res) => {
 
     // Create Razorpay order
     const razorpayOrder = await getRazorpay().orders.create({
-      amount: Math.round(totalAmount * 100), // Convert to paise
+      amount: Math.round(parsedTotalAmount * 100), // Convert to paise
       currency: 'INR',
       receipt: `receipt_${Date.now()}`,
       notes: {
         customerName: customer.name,
-        customerEmail: customer.email,
+        customerEmail,
         customerPhone: customer.mobile
       }
     });
@@ -118,28 +178,28 @@ router.post('/create-order', verifyToken, async (req, res) => {
       firebaseUid,
       customer: {
         name: customer.name,
-        email: customer.email,
+        email: customerEmail,
         mobile: customer.mobile,
         address: customer.address,
         state: customer.state || '',
         country: customer.country || 'India',
         pincode: customer.pincode
       },
-      items: items.map(item => ({
+      items: normalizedItems.map(item => ({
         productId: item.productId,
         name: item.name,
-        category: item.category || '',
+        category: item.category,
         image: item.image || '',
         weight: item.weight,
         quantity: item.quantity,
         price: item.price,
         total: item.total
       })),
-      subtotal,
-      discount,
+      subtotal: parsedSubtotal,
+      discount: parsedDiscount,
       couponCode,
-      deliveryCharge,
-      totalAmount,
+      deliveryCharge: parsedDeliveryCharge,
+      totalAmount: parsedTotalAmount,
       payment: {
         method: 'razorpay',
         razorpayOrderId: razorpayOrder.id,

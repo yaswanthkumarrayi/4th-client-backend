@@ -44,9 +44,17 @@ const productSchema = new mongoose.Schema({
 });
 
 // Query-performance indexes for product APIs.
-productSchema.index({ isActive: 1, category: 1, productId: 1 });
-productSchema.index({ isActive: 1, productId: 1 });
-productSchema.index({ isActive: 1, inStock: 1, productId: 1 });
+// Single field indexes for common filters
+productSchema.index({ productId: 1 });
+productSchema.index({ isActive: 1 });
+productSchema.index({ category: 1 });
+productSchema.index({ createdAt: -1 });
+
+// Compound indexes for common query patterns
+productSchema.index({ isActive: 1, category: 1, createdAt: -1 }); // List products by category
+productSchema.index({ isActive: 1, productId: 1 }); // Find active product by ID
+productSchema.index({ isActive: 1, inStock: 1, category: 1 }); // Filter by stock and category
+productSchema.index({ name: 'text', category: 'text' }); // Text search index
 
 // Calculate weight prices based on pricePerKg
 productSchema.methods.getWeightPrices = function() {

@@ -310,12 +310,13 @@ export const searchProducts = async (req, res) => {
       });
     }
 
-    const safeRegex = new RegExp(escapeRegex(searchQuery), 'i');
+    // Use efficient text search with regex for small dataset
+    // For larger datasets, consider full-text search index
     const products = await Product.find({
       isActive: true,
       $or: [
-        { name: safeRegex },
-        { category: safeRegex },
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { category: { $regex: searchQuery, $options: 'i' } },
       ],
     })
       .select(PRODUCT_SELECT_FIELDS)
