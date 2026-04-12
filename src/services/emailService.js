@@ -146,9 +146,9 @@ const renderDivider = () => `
 `;
 
 const renderSummaryBox = (innerHtml) => `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${BRAND_COLORS.summaryBorder};background-color:${BRAND_COLORS.summaryBackground};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${BRAND_COLORS.summaryBorder};background-color:${BRAND_COLORS.summaryBackground}!important;">
     <tr>
-      <td style="padding:16px;">
+      <td style="padding:16px;background-color:${BRAND_COLORS.summaryBackground}!important;">
         ${innerHtml}
       </td>
     </tr>
@@ -187,7 +187,7 @@ const renderItemsTable = (items = [], totalLabel = 'Total Amount', totalAmount =
     const weight = item?.weight ? ` <span style="font-size:11px;color:${BRAND_COLORS.bodyText};">(${escapeHtml(item.weight)})</span>` : '';
     const imageUrl = item?.image ? escapeHtml(String(item.image)) : BUSINESS_INFO.logoUrl;
     const altText = escapeHtml(item?.name || 'Product');
-    const rowBackground = index % 2 === 1 ? 'background-color:rgba(255,255,255,0.15);' : '';
+    const rowBackground = index % 2 === 1 ? `background-color:rgba(255,255,255,0.15)!important;` : '';
 
     return `
       <tr style="${rowBackground}">
@@ -243,7 +243,7 @@ const renderItemsTable = (items = [], totalLabel = 'Total Amount', totalAmount =
 
 const renderFooter = () => `
   <tr>
-    <td style="background-color:${BRAND_COLORS.maroon};padding:18px 24px;">
+    <td bgcolor="${BRAND_COLORS.maroon}" style="background-color:${BRAND_COLORS.maroon}!important;padding:18px 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
         <tr>
           <td align="center" style="padding:0 0 10px 0;">
@@ -289,6 +289,8 @@ const renderEmailTemplate = ({
     <head>
       <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="light only">
+      <meta name="supported-color-schemes" content="light">
       <title>${escapeHtml(subject)}</title>
       <style>
         @media only screen and (max-width: 480px) {
@@ -354,17 +356,17 @@ const renderEmailTemplate = ({
         }
       </style>
     </head>
-    <body style="Margin:0;padding:0;background-color:${BRAND_COLORS.yellow};">
+    <body style="Margin:0;padding:0;background-color:${BRAND_COLORS.yellow}!important;">
       <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
         ${escapeHtml(subject)}
       </div>
 
-      <table role="presentation" class="container-outer" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND_COLORS.yellow};">
+      <table role="presentation" class="container-outer" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BRAND_COLORS.yellow}" style="background-color:${BRAND_COLORS.yellow}!important;">
         <tr>
-          <td align="center" style="padding:24px 12px;">
-            <table role="presentation" class="container-main" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${BRAND_COLORS.yellow};">
+          <td align="center" style="padding:24px 12px;background-color:${BRAND_COLORS.yellow}!important;">
+            <table role="presentation" class="container-main" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BRAND_COLORS.yellow}" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${BRAND_COLORS.yellow}!important;">
               <tr>
-                <td class="header-section" align="center" style="background-color:${BRAND_COLORS.maroon};padding:20px 24px;">
+                <td class="header-section" align="center" bgcolor="${BRAND_COLORS.maroon}" style="background-color:${BRAND_COLORS.maroon}!important;padding:20px 24px;">
                   <img src="${BUSINESS_INFO.logoUrl}" alt="${BUSINESS_INFO.name}" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:50%;border:2px solid ${BRAND_COLORS.yellow};">
                   <div style="font-family:${EMAIL_FONT_FAMILY};font-size:24px;line-height:30px;font-weight:bold;color:${BRAND_COLORS.yellow};padding-top:10px;">
                     ${BUSINESS_INFO.name}
@@ -373,7 +375,7 @@ const renderEmailTemplate = ({
               </tr>
 
               <tr>
-                <td class="content-section" style="padding:24px;font-family:${EMAIL_FONT_FAMILY};color:${BRAND_COLORS.bodyText};">
+                <td class="content-section" bgcolor="${BRAND_COLORS.yellow}" style="padding:24px;font-family:${EMAIL_FONT_FAMILY};color:${BRAND_COLORS.bodyText};background-color:${BRAND_COLORS.yellow}!important;">
                   <span style="display:inline-block;padding:4px 10px;border-radius:999px;background-color:${badgeBackground};color:${badgeTextColor};border:1px solid ${BRAND_COLORS.maroon};font-size:11px;line-height:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;">
                     ${escapeHtml(badgeText)}
                   </span>
@@ -395,7 +397,7 @@ const renderEmailTemplate = ({
 
                   <table role="presentation" class="cta-button" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
                     <tr>
-                      <td align="center" bgcolor="${BRAND_COLORS.maroon}" style="border-radius:4px;">
+                      <td align="center" bgcolor="${BRAND_COLORS.maroon}" style="background-color:${BRAND_COLORS.maroon}!important;border-radius:4px;">
                         <a href="${ctaUrl || BUSINESS_INFO.ordersUrl}" target="_blank" style="display:inline-block;padding:12px 20px;font-family:${EMAIL_FONT_FAMILY};font-size:14px;line-height:14px;font-weight:bold;color:${BRAND_COLORS.yellow};text-decoration:none;">
                           ${escapeHtml(ctaLabel)}
                         </a>
