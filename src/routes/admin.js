@@ -7,7 +7,8 @@ import { ORDER_STATUS, isValidOrderStatus } from '../config/orderStatus.js';
 import { 
   sendOrderReceivedEmail, 
   sendOutForDeliveryEmail, 
-  sendDeliveredEmail 
+  sendDeliveredEmail,
+  sendProductUpdateEmail
 } from '../services/emailService.js';
 import { clearResponseCacheByPrefix } from '../middleware/cache.js';
 
@@ -688,7 +689,35 @@ router.put('/products/:productId', verifyAdminToken, async (req, res) => {
     }
     
     // ═══════════════════════════════════════════
-    // STEP 9: RETURN UPDATED PRODUCT
+    // STEP 9: SEND EMAIL NOTIFICATION FOR STOCK CHANGES
+    // ═══════════════════════════════════════════
+    if (Object.keys(updateFields).length > 0) {
+      const stockOrPriceChanged = 
+        'inStock' in updateFields || 
+        'stockQuantity' in updateFields || 
+        'pricePerKg' in updateFields;
+      
+      if (stockOrPriceChanged) {
+        // Send email notification asynchronously (with proper error handling)
+        (async () => {
+          try {
+            console.log('\n📧 Sending product update notification...');
+            const emailResult = await sendProductUpdateEmail(updatedProduct, updateFields);
+            if (emailResult.success) {
+              console.log('✅ Product update email sent successfully');
+            } else {
+              console.error('⚠️  Product update email failed (non-critical):', emailResult.error);
+            }
+          } catch (emailError) {
+            console.error('⚠️  Email send error (non-critical):', emailError.message);
+            // Don't block the response - email failures are non-critical
+          }
+        })();
+      }
+    }
+    
+    // ═══════════════════════════════════════════
+    // STEP 10: RETURN UPDATED PRODUCT
     // ═══════════════════════════════════════════
     const updatedProduct = await Product.findOne({ productId });
     

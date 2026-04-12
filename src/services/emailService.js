@@ -163,11 +163,11 @@ const renderKeyValueTable = (rows = []) => `
         const rawValue = row.value === undefined || row.value === null || row.value === '' ? '-' : row.value;
         const displayValue = row.isHtml ? String(rawValue) : escapeHtml(rawValue);
         return `
-          <tr>
-            <td style="padding:6px 0;width:42%;font-size:13px;line-height:18px;font-weight:bold;color:${BRAND_COLORS.bodyText};vertical-align:top;">
+          <tr class="label-value-row">
+            <td class="label-cell" style="padding:6px 0;width:42%;font-size:13px;line-height:18px;font-weight:bold;color:${BRAND_COLORS.bodyText};vertical-align:top;">
               ${escapeHtml(row.label)}
             </td>
-            <td style="padding:6px 0;font-size:13px;line-height:18px;color:${BRAND_COLORS.bodyText};">
+            <td class="value-cell" style="padding:6px 0;font-size:13px;line-height:18px;color:${BRAND_COLORS.bodyText};">
               ${displayValue}
             </td>
           </tr>
@@ -203,10 +203,10 @@ const renderItemsTable = (items = [], totalLabel = 'Total Amount', totalAmount =
             </tr>
           </table>
         </td>
-        <td align="center" style="padding:8px;border:1px solid ${BRAND_COLORS.summaryBorder};font-size:12px;line-height:16px;color:${BRAND_COLORS.bodyText};">
+        <td align="center" class="product-quantity" style="padding:8px;border:1px solid ${BRAND_COLORS.summaryBorder};font-size:12px;line-height:16px;color:${BRAND_COLORS.bodyText};">
           ${Number.isFinite(quantity) ? quantity : '-'}
         </td>
-        <td align="right" style="padding:8px;border:1px solid ${BRAND_COLORS.summaryBorder};font-size:12px;line-height:16px;color:${BRAND_COLORS.bodyText};">
+        <td align="right" class="product-total" style="padding:8px;border:1px solid ${BRAND_COLORS.summaryBorder};font-size:12px;line-height:16px;color:${BRAND_COLORS.bodyText};">
           ${formatCurrency(lineAmount)}
         </td>
       </tr>
@@ -222,7 +222,7 @@ const renderItemsTable = (items = [], totalLabel = 'Total Amount', totalAmount =
   `;
 
   return `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;border-collapse:collapse;">
+    <table role="presentation" class="items-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;border-collapse:collapse;">
       <tr>
         <td style="padding:8px;border:1px solid ${BRAND_COLORS.summaryBorder};font-size:12px;line-height:16px;font-weight:bold;color:${BRAND_COLORS.bodyText};">Item</td>
         <td align="center" style="padding:8px;border:1px solid ${BRAND_COLORS.summaryBorder};font-size:12px;line-height:16px;font-weight:bold;color:${BRAND_COLORS.bodyText};">Qty</td>
@@ -290,18 +290,81 @@ const renderEmailTemplate = ({
       <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${escapeHtml(subject)}</title>
+      <style>
+        @media only screen and (max-width: 480px) {
+          body, table[role="presentation"] {
+            width: 100% !important;
+          }
+          
+          .container-outer > tr > td {
+            padding: 12px 8px !important;
+          }
+          
+          .container-main {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+          
+          .header-section {
+            padding: 16px 12px !important;
+          }
+          
+          .content-section {
+            padding: 16px 12px !important;
+          }
+          
+          .label-value-row {
+            display: block !important;
+          }
+          
+          .label-cell {
+            width: 100% !important;
+            display: block !important;
+            margin-bottom: 4px !important;
+            font-weight: bold;
+          }
+          
+          .value-cell {
+            width: 100% !important;
+            display: block !important;
+            text-align: left !important;
+          }
+          
+          .items-table {
+            font-size: 12px !important;
+          }
+          
+          .items-table td {
+            padding: 8px 4px !important;
+          }
+          
+          .product-quantity,
+          .product-total {
+            font-size: 11px !important;
+          }
+          
+          h1 {
+            font-size: 20px !important;
+          }
+          
+          .cta-button {
+            max-width: 100% !important;
+            width: auto !important;
+          }
+        }
+      </style>
     </head>
     <body style="Margin:0;padding:0;background-color:${BRAND_COLORS.yellow};">
       <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
         ${escapeHtml(subject)}
       </div>
 
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND_COLORS.yellow};">
+      <table role="presentation" class="container-outer" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND_COLORS.yellow};">
         <tr>
           <td align="center" style="padding:24px 12px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${BRAND_COLORS.yellow};">
+            <table role="presentation" class="container-main" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${BRAND_COLORS.yellow};">
               <tr>
-                <td align="center" style="background-color:${BRAND_COLORS.maroon};padding:20px 24px;">
+                <td class="header-section" align="center" style="background-color:${BRAND_COLORS.maroon};padding:20px 24px;">
                   <img src="${BUSINESS_INFO.logoUrl}" alt="${BUSINESS_INFO.name}" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:50%;border:2px solid ${BRAND_COLORS.yellow};">
                   <div style="font-family:${EMAIL_FONT_FAMILY};font-size:24px;line-height:30px;font-weight:bold;color:${BRAND_COLORS.yellow};padding-top:10px;">
                     ${BUSINESS_INFO.name}
@@ -310,7 +373,7 @@ const renderEmailTemplate = ({
               </tr>
 
               <tr>
-                <td style="padding:24px;font-family:${EMAIL_FONT_FAMILY};color:${BRAND_COLORS.bodyText};">
+                <td class="content-section" style="padding:24px;font-family:${EMAIL_FONT_FAMILY};color:${BRAND_COLORS.bodyText};">
                   <span style="display:inline-block;padding:4px 10px;border-radius:999px;background-color:${badgeBackground};color:${badgeTextColor};border:1px solid ${BRAND_COLORS.maroon};font-size:11px;line-height:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;">
                     ${escapeHtml(badgeText)}
                   </span>
@@ -330,7 +393,7 @@ const renderEmailTemplate = ({
                   ${renderDivider()}
                   ${summaryHtml}
 
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+                  <table role="presentation" class="cta-button" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
                     <tr>
                       <td align="center" bgcolor="${BRAND_COLORS.maroon}" style="border-radius:4px;">
                         <a href="${ctaUrl || BUSINESS_INFO.ordersUrl}" target="_blank" style="display:inline-block;padding:12px 20px;font-family:${EMAIL_FONT_FAMILY};font-size:14px;line-height:14px;font-weight:bold;color:${BRAND_COLORS.yellow};text-decoration:none;">
@@ -630,6 +693,76 @@ export const sendOrderCancelledEmail = async (order) => {
 };
 
 /**
+ * PRODUCT UPDATE NOTIFICATION
+ * Sends email when admin updates product stock/availability
+ * Only triggers for stock-related changes
+ */
+export const sendProductUpdateEmail = async (product, changes) => {
+  try {
+    if (!product || !product.name) {
+      console.error('❌ sendProductUpdateEmail: Invalid product data');
+      return { success: false, error: 'Invalid product data' };
+    }
+
+    // Extract what changed for subject
+    const changeDescriptions = [];
+    if (changes.inStock !== undefined) changeDescriptions.push(`is now ${changes.inStock ? 'in stock' : 'out of stock'}`);
+    if (changes.stockQuantity !== undefined) changeDescriptions.push(`stock updated to ${changes.stockQuantity || 'unlimited'}`);
+    if (changes.pricePerKg !== undefined) changeDescriptions.push(`price updated to ₹${changes.pricePerKg}/kg`);
+    if (changes.isActive !== undefined) changeDescriptions.push(`is now ${changes.isActive ? 'active' : 'inactive'}`);
+
+    const subject = `${product.name} Update from Samskruthi Home Foods`;
+    const adminEmail = process.env.ADMIN_EMAIL || 'niva2026.in@gmail.com';
+    
+    // Build info table
+    const infoRows = [
+      { label: 'Product Name', value: product.name },
+      { label: 'Product ID', value: product.productId },
+      { label: 'Category', value: product.category || '-' }
+    ];
+
+    if (changes.inStock !== undefined) {
+      infoRows.push({ label: 'Stock Status', value: changes.inStock ? '✅ In Stock' : '❌ Out of Stock' });
+    }
+    if (changes.stockQuantity !== undefined) {
+      infoRows.push({ label: 'Quantity Available', value: changes.stockQuantity || 'Unlimited' });
+    }
+    if (changes.pricePerKg !== undefined) {
+      infoRows.push({ label: 'Price Per KG', value: `₹${changes.pricePerKg}` });
+    }
+
+    const changesSummary = renderKeyValueTable(infoRows);
+
+    const html = renderEmailTemplate({
+      subject,
+      badgeText: 'Product Update',
+      heading: `${product.name} has been updated`,
+      introLines: [
+        `A product in your store has been updated:`,
+        changeDescriptions.join(' • ')
+      ],
+      summaryHtml: renderSummaryBox(changesSummary),
+      ctaLabel: 'View Product',
+      ctaUrl: BUSINESS_INFO.website
+    });
+
+    // Send to admin
+    const result = await sendEmail(adminEmail, subject, html);
+    
+    if (result.success) {
+      console.log(`📧 Product update email sent for: ${product.name}`);
+    } else {
+      console.error(`📧 Product update email failed for: ${product.name}`, result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('❌ sendProductUpdateEmail error:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Test email configuration
  */
 export const testEmailConfiguration = async () => {
@@ -656,5 +789,6 @@ export default {
   sendOutForDeliveryEmail,
   sendDeliveredEmail,
   sendOrderCancelledEmail,
+  sendProductUpdateEmail,
   testEmailConfiguration
 };
