@@ -12,6 +12,7 @@ import paymentRoutes from './routes/payment.js';
 import webhookRoutes from './routes/webhook.js';
 import productRoutes from './routes/productRoutes.js';
 import { apiCompression } from './middleware/compression.js';
+import { runSmtpTest } from './utils/smtpTest.js';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -228,4 +229,9 @@ app.listen(PORT, () => {
   console.log(`║  🔥 Firebase:    ${isFirebaseInitialized() ? '✅ Ready' : '❌ NOT Ready'}                        ║`);
   console.log('╚════════════════════════════════════════════════════════╝');
   console.log('');
+
+  // Run SMTP connectivity test (non-blocking, for debugging)
+  runSmtpTest().catch(err => {
+    console.error('SMTP test encountered an error:', err.message);
+  });
 });
