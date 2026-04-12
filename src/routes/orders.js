@@ -370,12 +370,27 @@ router.post('/verify-payment', verifyToken, async (req, res) => {
 
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
+    const page = parseInt(req.query.page || '1', 10);
+    const limit = parseInt(req.query.limit || '20', 10);
+    const skip = (page - 1) * limit;
+
     const orders = await Order.find({ firebaseUid: req.user.uid })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+    
+    const total = await Order.countDocuments({ firebaseUid: req.user.uid });
     
     res.json({
       success: true,
-      orders
+      orders,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
     });
   } catch (error) {
     console.error('Get orders error:', error);

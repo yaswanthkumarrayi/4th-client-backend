@@ -160,6 +160,11 @@ orderSchema.methods.addStatusHistory = function(status, note = '') {
   this.orderStatus = status;
 };
 
+// Create indexes for better query performance
+orderSchema.index({ firebaseUid: 1, createdAt: -1 });
+orderSchema.index({ orderId: 1 });
+orderSchema.index({ 'payment.razorpayOrderId': 1 });
+
 const Order = mongoose.model('Order', orderSchema);
 
 export default Order;
